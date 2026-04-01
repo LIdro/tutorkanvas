@@ -1,0 +1,185 @@
+// ─────────────────────────────────────────────
+// TutorKanvas — Security & Key Storage Layer
+// Keys stored in localStorage under tk_ prefix.
+// Keys NEVER sent to TutorKanvas servers — direct browser → provider only.
+// ─────────────────────────────────────────────
+
+import type { ProviderID, AppSettings, ProviderConfig } from '@/types'
+import { hashPin } from './utils'
+
+// ── Storage Keys ─────────────────────────────
+
+const KEYS = {
+  providerConfig:    'tk_provider_config',
+  deepgramKey:       'tk_deepgram_key',
+  deepgramVoice:     'tk_deepgram_voice',
+  parentPinHash:     'tk_parent_pin_hash',
+  activeProfileId:   'tk_active_profile_id',
+  voiceEnabled:      'tk_voice_enabled',
+  hasCompletedSetup: 'tk_setup_complete',
+} as const
+
+// ── Guard: only run in browser ────────────────
+
+function isBrowser(): boolean {
+  return typeof window !== 'undefined'
+}
+
+// ── Provider Config ───────────────────────────
+
+export function saveProviderConfig(config: ProviderConfig): void {
+  if (!isBrowser()) return
+  // Validate that key field is present but never log it
+  if (!config.apiKey) return
+  localStorage.setItem(KEYS.providerConfig, JSON.stringify(config))
+}
+
+export function getProviderConfig(): ProviderConfig | null {
+  if (!isBrowser()) return null
+  try {
+    const raw = localStorage.getItem(KEYS.providerConfig)
+    return raw ? (JSON.parse(raw) as ProviderConfig) : null
+  } catch {
+    return null
+  }
+}
+
+export function clearProviderConfig(): void {
+  if (!isBrowser()) return
+  localStorage.removeItem(KEYS.providerConfig)
+}
+
+// ── Deepgram Key ──────────────────────────────
+
+export function saveDeepgramKey(key: string): void {
+  if (!isBrowser() || !key) return
+  localStorage.setItem(KEYS.deepgramKey, key)
+}
+
+export function getDeepgramKey(): string | null {
+  if (!isBrowser()) return null
+  return localStorage.getItem(KEYS.deepgramKey)
+}
+
+export function clearDeepgramKey(): void {
+  if (!isBrowser()) return
+  localStorage.removeItem(KEYS.deepgramKey)
+}
+
+// ── Deepgram Voice ────────────────────────────
+
+export function saveDeepgramVoice(voice: string): void {
+  if (!isBrowser()) return
+  localStorage.setItem(KEYS.deepgramVoice, voice)
+}
+
+export function getDeepgramVoice(): string {
+  if (!isBrowser()) return 'aura-asteria-en'
+  return localStorage.getItem(KEYS.deepgramVoice) ?? 'aura-asteria-en'
+}
+
+// ── Parent PIN ────────────────────────────────
+
+export async function saveParentPin(pin: string): Promise<void> {
+  if (!isBrowser() || !pin) return
+  const hashed = await hashPin(pin)
+  localStorage.setItem(KEYS.parentPinHash, hashed)
+}
+
+export function getParentPinHash(): string | null {
+  if (!isBrowser()) return null
+  return localStorage.getItem(KEYS.parentPinHash)
+}
+
+export async function verifyParentPin(pin: string): Promise<boolean> {
+  const stored = getParentPinHash()
+  if (!stored) return false
+  const hashed = await hashPin(pin)
+  return hashed === stored
+}
+
+export function hasPinSet(): boolean {
+  return !!getParentPinHash()
+}
+
+// ── Active Profile ────────────────────────────
+
+export function saveActiveProfileId(id: string): void {
+  if (!isBrowser()) return
+  localStorage.setItem(KEYS.activeProfileId, id)
+}
+
+export function getActiveProfileId(): string | null {
+  if (!isBrowser()) return null
+  return localStorage.getItem(KEYS.activeProfileId)
+}
+
+// ── Voice Toggle ──────────────────────────────
+
+export function saveVoiceEnabled(enabled: boolean): void {
+  if (!isBrowser()) return
+  localStorage.setItem(KEYS.voiceEnabled, String(enabled))
+}
+
+export function getVoiceEnabled(): boolean {
+  if (!isBrowser()) return true
+  return localStorage.getItem(KEYS.voiceEnabled) !== 'false'
+}
+
+// ── Setup Completion ──────────────────────────
+
+export function markSetupComplete(): void {
+  if (!isBrowser()) return
+  localStorage.setItem(KEYS.hasCompletedSetup, 'true')
+}
+
+export function hasCompletedSetup(): boolean {
+  if (!isBrowser()) return false
+  return localStorage.getItem(KEYS.hasCompletedSetup) === 'true'
+}
+
+/** Alias used by canvas page guard */
+export const isSetupComplete = hasCompletedSetup
+
+// ── Full App Settings Snapshot ────────────────
+
+export function getAppSettings(): AppSettings {
+  return {
+    providerConfig:    getProviderConfig(),
+    deepgramKey:       getDeepgramKey(),
+    deepgramVoice:     getDeepgramVoice(),
+    parentPinHash:     getParentPinHash(),
+    activeProfileId:   getActiveProfileId(),
+    voiceEnabled:      getVoiceEnabled(),
+    hasCompletedSetup: hasCompletedSetup(),
+  }
+}
+
+// ── Nuclear: Clear Everything ─────────────────
+
+export function clearAllAppData(): void {
+  if (!isBrowser()) return
+  Object.values(KEYS).forEach((k) => localStorage.removeItem(k))
+}
+
+// ── Key Validation Helpers ────────────────────
+
+export const KEY_PATTERNS: Record<ProviderID, RegExp> = {
+  openrouter: /^sk-or-v1-[a-zA-Z0-9]{64,}$/,
+  openai:     /^sk-[a-zA-Z0-9]{32,}$/,
+  anthropic:  /^sk-ant-[a-zA-Z0-9\-]{32,}$/,
+  google:     /^AIza[a-zA-Z0-9\-_]{35}$/,
+  ollama:     /^.+$/,             // any non-empty string (local URL)
+}
+
+export function validateApiKey(providerId: ProviderID, key: string): boolean {
+  if (!key || key.trim() === '') return false
+  // Ollama uses a URL, not a key pattern
+  if (providerId === 'ollama') return key.startsWith('http')
+  return KEY_PATTERNS[providerId]?.test(key.trim()) ?? true
+}
+
+export function maskKey(key: string): string {
+  if (!key || key.length < 8) return '••••••••'
+  return key.slice(0, 6) + '••••••••' + key.slice(-4)
+}
