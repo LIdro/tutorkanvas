@@ -46,6 +46,11 @@ export function extractLongDivisionProblem(prompt: string): LongDivisionProblem 
     return toProblem(dividedByMatch[1], dividedByMatch[2])
   }
 
+  const divideByMatch = normalized.match(/(?:how\s+to\s+)?divide\s+(\d+)\s+by\s+(\d+)/)
+  if (divideByMatch) {
+    return toProblem(divideByMatch[1], divideByMatch[2])
+  }
+
   const longDivisionMatch = normalized.match(/long\s+division\s+of\s+(\d+)\s+by\s+(\d+)/)
   if (longDivisionMatch) {
     return toProblem(longDivisionMatch[1], longDivisionMatch[2])
