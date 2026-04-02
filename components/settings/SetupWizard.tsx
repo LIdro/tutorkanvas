@@ -4,13 +4,16 @@
 // Multi-step first-run experience.
 // ─────────────────────────────────────────────
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@clerk/nextjs'
 import { Eye, EyeOff, ExternalLink, ChevronRight, ChevronLeft, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   saveProviderConfig, saveParentPin, saveDeepgramKey,
   saveDeepgramVoice, markSetupComplete, validateApiKey,
+  getProviderConfig, getDeepgramKey, getDeepgramVoice,
+  hasCompletedSetup, hasMinimumSetup,
 } from '@/lib/security'
 import { PROVIDERS, getDefaultModel } from '@/lib/providers'
 import type { ProviderID } from '@/types'
@@ -28,6 +31,7 @@ const TOTAL_STEPS = STEP_LABELS.length
 
 export default function SetupWizard() {
   const router = useRouter()
+  const { isLoaded } = useAuth()
   const { addProfile } = useLearnerProfile()
 
   const [step, setStep] = useState(0)
@@ -55,6 +59,30 @@ export default function SetupWizard() {
   const [childAge, setChildAge] = useState('')
   const [childGrade, setChildGrade] = useState('')
   const [addedProfiles, setAddedProfiles] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!isLoaded) return
+
+    const existingProvider = getProviderConfig()
+    if (existingProvider) {
+      setProviderId(existingProvider.id)
+      setApiKey(existingProvider.apiKey)
+      setModel(existingProvider.model)
+    }
+
+    const existingDeepgramKey = getDeepgramKey()
+    if (existingDeepgramKey) setDgKey(existingDeepgramKey)
+    setDgVoice(getDeepgramVoice())
+
+    if (hasCompletedSetup()) {
+      router.replace('/canvas')
+      return
+    }
+
+    if (hasMinimumSetup()) {
+      setStep(5)
+    }
+  }, [isLoaded, router])
 
   const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1))
   const back = () => setStep((s) => Math.max(s - 1, 0))
@@ -106,6 +134,16 @@ export default function SetupWizard() {
   }
 
   const providerMeta = PROVIDERS.find((p) => p.id === providerId)!
+
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-green-50 p-4 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
+        <div className="rounded-3xl bg-white px-6 py-4 text-sm text-gray-500 shadow-xl dark:bg-gray-900 dark:text-gray-400">
+          Loading your setup…
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-green-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 flex items-center justify-center p-4">

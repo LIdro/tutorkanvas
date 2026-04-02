@@ -6,12 +6,28 @@
 import type { LearnerProfile } from '@/types'
 import { generateId, nowISO } from './utils'
 import { getDB, PROFILES_STORE } from './db'
+import { getStorageUserId } from './storage-user'
+
+function getCurrentUserId(): string {
+  return getStorageUserId() ?? 'anonymous'
+}
+
+async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T | null> {
+  try {
+    const res = await fetch(input, init)
+    if (!res.ok) return null
+    return (await res.json()) as T
+  } catch {
+    return null
+  }
+}
 
 // ── CRUD ──────────────────────────────────────
 
 export async function createProfile(name: string, age?: number, grade?: string): Promise<LearnerProfile> {
   const profile: LearnerProfile = {
     id: generateId(),
+    userId: getCurrentUserId(),
     name,
     age,
     grade,
@@ -25,22 +41,45 @@ export async function createProfile(name: string, age?: number, grade?: string):
     totalStars: 0,
     aiNotes: [],
   }
+
+  const remote = await fetchJson<LearnerProfile>('/api/profiles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(profile),
+  })
+  if (remote) return remote
+
   const db = await getDB()
   await db.put(PROFILES_STORE, profile)
   return profile
 }
 
 export async function getProfile(id: string): Promise<LearnerProfile | null> {
+  const remote = await fetchJson<LearnerProfile>(`/api/profiles/${id}`)
+  if (remote) return remote
+
   const db = await getDB()
   return (await db.get(PROFILES_STORE, id)) ?? null
 }
 
 export async function getAllProfiles(): Promise<LearnerProfile[]> {
+  const remote = await fetchJson<LearnerProfile[]>('/api/profiles')
+  if (remote) return remote
+
   const db = await getDB()
-  return db.getAll(PROFILES_STORE)
+  const all = await db.getAll(PROFILES_STORE)
+  const userId = getCurrentUserId()
+  return all.filter((profile) => profile.userId === userId)
 }
 
 export async function updateProfile(id: string, updates: Partial<LearnerProfile>): Promise<void> {
+  const remote = await fetch(`/api/profiles/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  }).catch(() => null)
+  if (remote?.ok) return
+
   const db = await getDB()
   const existing = await db.get(PROFILES_STORE, id)
   if (!existing) return
@@ -48,6 +87,9 @@ export async function updateProfile(id: string, updates: Partial<LearnerProfile>
 }
 
 export async function deleteProfile(id: string): Promise<void> {
+  const remote = await fetch(`/api/profiles/${id}`, { method: 'DELETE' }).catch(() => null)
+  if (remote?.ok) return
+
   const db = await getDB()
   await db.delete(PROFILES_STORE, id)
 }

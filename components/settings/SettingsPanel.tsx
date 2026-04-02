@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────
 
 import { useState, useEffect } from 'react'
+import { useAuth } from '@clerk/nextjs'
 import { X, Eye, EyeOff, ExternalLink, Trash2, Plus, Check, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose }: Props) {
+  const { userId } = useAuth()
   const { profiles, addProfile, removeProfile } = useLearnerProfile()
 
   // PIN gate
@@ -340,13 +342,15 @@ export default function SettingsPanel({ open, onClose }: Props) {
               {/* Data Section */}
               {section === 'data' && (
                 <div className="space-y-4">
-                  <div className="bg-blue-50 dark:bg-blue-950/40 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-400 space-y-1 border border-blue-100 dark:border-blue-800/30">
-                    <p className="font-semibold">🔒 Your privacy</p>
-                    <p>All data is stored locally on this device. Your API keys never leave your browser.</p>
+                <div className="bg-blue-50 dark:bg-blue-950/40 rounded-xl p-4 text-sm text-blue-700 dark:text-blue-400 space-y-1 border border-blue-100 dark:border-blue-800/30">
+                  <p className="font-semibold">🔒 Your privacy</p>
+                    <p>Keys stay in this browser and are scoped to the signed-in Clerk user.</p>
                   </div>
                   <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                    <p>• Signed in as <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{userId ?? 'unknown'}</code></p>
                     <p>• API keys → <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">localStorage</code></p>
                     <p>• Sessions & profiles → <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">IndexedDB</code></p>
+                    <p>• Cross-device sync still needs a real database</p>
                     <p>• No analytics or telemetry</p>
                     <p>• MIT licensed — inspect the source any time</p>
                   </div>

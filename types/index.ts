@@ -105,6 +105,7 @@ export type ExplanationStyle = 'visual' | 'step-by-step' | 'story' | 'auto'
 
 export interface LearnerProfile {
   id: string
+  userId: string
   name: string
   age?: number
   grade?: string
@@ -123,6 +124,7 @@ export interface LearnerProfile {
 
 export interface TKSession {
   id: string
+  userId: string
   profileId: string
   name: string
   createdAt: string

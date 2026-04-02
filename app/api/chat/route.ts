@@ -5,12 +5,18 @@
 // ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
 import { getProvider } from '@/lib/providers'
 import { buildSystemPrompt } from '@/lib/prompts'
 import type { ProviderConfig, Message, LearnerProfile } from '@/types'
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    }
+
     const body = await req.json()
     const { messages, providerConfig, profile } = body as {
       messages: Message[]

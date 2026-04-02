@@ -6,6 +6,7 @@
 
 import type { ProviderID, AppSettings, ProviderConfig } from '@/types'
 import { hashPin } from './utils'
+import { getStorageUserId } from './storage-user'
 
 // ── Storage Keys ─────────────────────────────
 
@@ -19,10 +20,41 @@ const KEYS = {
   hasCompletedSetup: 'tk_setup_complete',
 } as const
 
+const LEGACY_KEYS = { ...KEYS }
+
 // ── Guard: only run in browser ────────────────
 
 function isBrowser(): boolean {
   return typeof window !== 'undefined'
+}
+
+function getScopedKey(key: string): string {
+  const userId = getStorageUserId()
+  return userId ? `${key}:${userId}` : key
+}
+
+function getStoredValue(key: string): string | null {
+  if (!isBrowser()) return null
+
+  const scopedKey = getScopedKey(key)
+  const scopedValue = localStorage.getItem(scopedKey)
+  if (scopedValue !== null) return scopedValue
+
+  const legacyValue = localStorage.getItem(key)
+  if (legacyValue !== null && getStorageUserId()) {
+    localStorage.setItem(scopedKey, legacyValue)
+  }
+  return legacyValue
+}
+
+function setStoredValue(key: string, value: string): void {
+  if (!isBrowser()) return
+  localStorage.setItem(getScopedKey(key), value)
+}
+
+function removeStoredValue(key: string): void {
+  if (!isBrowser()) return
+  localStorage.removeItem(getScopedKey(key))
 }
 
 // ── Provider Config ───────────────────────────
@@ -31,13 +63,13 @@ export function saveProviderConfig(config: ProviderConfig): void {
   if (!isBrowser()) return
   // Validate that key field is present but never log it
   if (!config.apiKey) return
-  localStorage.setItem(KEYS.providerConfig, JSON.stringify(config))
+  setStoredValue(KEYS.providerConfig, JSON.stringify(config))
 }
 
 export function getProviderConfig(): ProviderConfig | null {
   if (!isBrowser()) return null
   try {
-    const raw = localStorage.getItem(KEYS.providerConfig)
+    const raw = getStoredValue(KEYS.providerConfig)
     return raw ? (JSON.parse(raw) as ProviderConfig) : null
   } catch {
     return null
@@ -46,36 +78,36 @@ export function getProviderConfig(): ProviderConfig | null {
 
 export function clearProviderConfig(): void {
   if (!isBrowser()) return
-  localStorage.removeItem(KEYS.providerConfig)
+  removeStoredValue(KEYS.providerConfig)
 }
 
 // ── Deepgram Key ──────────────────────────────
 
 export function saveDeepgramKey(key: string): void {
   if (!isBrowser() || !key) return
-  localStorage.setItem(KEYS.deepgramKey, key)
+  setStoredValue(KEYS.deepgramKey, key)
 }
 
 export function getDeepgramKey(): string | null {
   if (!isBrowser()) return null
-  return localStorage.getItem(KEYS.deepgramKey)
+  return getStoredValue(KEYS.deepgramKey)
 }
 
 export function clearDeepgramKey(): void {
   if (!isBrowser()) return
-  localStorage.removeItem(KEYS.deepgramKey)
+  removeStoredValue(KEYS.deepgramKey)
 }
 
 // ── Deepgram Voice ────────────────────────────
 
 export function saveDeepgramVoice(voice: string): void {
   if (!isBrowser()) return
-  localStorage.setItem(KEYS.deepgramVoice, voice)
+  setStoredValue(KEYS.deepgramVoice, voice)
 }
 
 export function getDeepgramVoice(): string {
   if (!isBrowser()) return 'aura-asteria-en'
-  return localStorage.getItem(KEYS.deepgramVoice) ?? 'aura-asteria-en'
+  return getStoredValue(KEYS.deepgramVoice) ?? 'aura-asteria-en'
 }
 
 // ── Parent PIN ────────────────────────────────
@@ -83,12 +115,12 @@ export function getDeepgramVoice(): string {
 export async function saveParentPin(pin: string): Promise<void> {
   if (!isBrowser() || !pin) return
   const hashed = await hashPin(pin)
-  localStorage.setItem(KEYS.parentPinHash, hashed)
+  setStoredValue(KEYS.parentPinHash, hashed)
 }
 
 export function getParentPinHash(): string | null {
   if (!isBrowser()) return null
-  return localStorage.getItem(KEYS.parentPinHash)
+  return getStoredValue(KEYS.parentPinHash)
 }
 
 export async function verifyParentPin(pin: string): Promise<boolean> {
@@ -106,36 +138,36 @@ export function hasPinSet(): boolean {
 
 export function saveActiveProfileId(id: string): void {
   if (!isBrowser()) return
-  localStorage.setItem(KEYS.activeProfileId, id)
+  setStoredValue(KEYS.activeProfileId, id)
 }
 
 export function getActiveProfileId(): string | null {
   if (!isBrowser()) return null
-  return localStorage.getItem(KEYS.activeProfileId)
+  return getStoredValue(KEYS.activeProfileId)
 }
 
 // ── Voice Toggle ──────────────────────────────
 
 export function saveVoiceEnabled(enabled: boolean): void {
   if (!isBrowser()) return
-  localStorage.setItem(KEYS.voiceEnabled, String(enabled))
+  setStoredValue(KEYS.voiceEnabled, String(enabled))
 }
 
 export function getVoiceEnabled(): boolean {
   if (!isBrowser()) return true
-  return localStorage.getItem(KEYS.voiceEnabled) !== 'false'
+  return getStoredValue(KEYS.voiceEnabled) !== 'false'
 }
 
 // ── Setup Completion ──────────────────────────
 
 export function markSetupComplete(): void {
   if (!isBrowser()) return
-  localStorage.setItem(KEYS.hasCompletedSetup, 'true')
+  setStoredValue(KEYS.hasCompletedSetup, 'true')
 }
 
 export function hasCompletedSetup(): boolean {
   if (!isBrowser()) return false
-  return localStorage.getItem(KEYS.hasCompletedSetup) === 'true'
+  return getStoredValue(KEYS.hasCompletedSetup) === 'true'
 }
 
 /** Alias used by canvas page guard */
@@ -159,7 +191,29 @@ export function getAppSettings(): AppSettings {
 
 export function clearAllAppData(): void {
   if (!isBrowser()) return
-  Object.values(KEYS).forEach((k) => localStorage.removeItem(k))
+  Object.values(KEYS).forEach((key) => {
+    localStorage.removeItem(key)
+    localStorage.removeItem(getScopedKey(key))
+  })
+}
+
+export function hasMinimumSetup(): boolean {
+  return hasPinSet() && !!getProviderConfig()?.apiKey
+}
+
+export function migrateLegacySettingsToCurrentUser(): void {
+  if (!isBrowser()) return
+  if (!getStorageUserId()) return
+
+  Object.values(LEGACY_KEYS).forEach((key) => {
+    const scopedKey = getScopedKey(key)
+    const scopedValue = localStorage.getItem(scopedKey)
+    const legacyValue = localStorage.getItem(key)
+
+    if (scopedValue === null && legacyValue !== null) {
+      localStorage.setItem(scopedKey, legacyValue)
+    }
+  })
 }
 
 // ── Key Validation Helpers ────────────────────

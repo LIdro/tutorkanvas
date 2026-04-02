@@ -96,7 +96,7 @@ export default function AIResponseCard({ response, isLoading, onGameComplete, on
               </div>
               <div className="flex-1">
                 <p className="text-sm font-semibold text-purple-600 dark:text-purple-400 mb-1">Max says</p>
-                <p className="text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
+                <p className="font-patrick-hand text-gray-800 dark:text-gray-200 text-xl leading-relaxed">
                   <TypingText text={speakAction.text} />
                 </p>
               </div>

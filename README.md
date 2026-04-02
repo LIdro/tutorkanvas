@@ -1,8 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+TutorKanvas is a Next.js tutoring canvas with Clerk authentication, local BYOK provider setup, and AI-assisted maths workflows.
 
 ## Getting Started
 
-First, run the development server:
+First, set your environment variables:
+
+```bash
+cp .env.example .env.local
+```
+
+Fill in at least:
+
+```bash
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+CLERK_SECRET_KEY=...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+For real cross-device synced sessions, also set:
+
+```bash
+DATABASE_URL=postgres://...
+```
+
+Then run the development server:
 
 ```bash
 npm run dev
@@ -14,7 +34,12 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000), create or sign in to a Clerk account, then complete the in-app TutorKanvas setup.
+
+## Persistence modes
+
+- Without `DATABASE_URL`: profiles and sessions fall back to browser storage on the current device.
+- With `DATABASE_URL`: profiles and sessions are stored server-side and scoped to the signed-in Clerk user.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

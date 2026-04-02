@@ -7,6 +7,7 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth, UserButton } from '@clerk/nextjs'
 import CanvasWrapper, { type CanvasWrapperRef } from '@/components/canvas/CanvasWrapper'
 import Toolbar from '@/components/toolbar/Toolbar'
 import AIToolbar from '@/components/toolbar/AIToolbar'
@@ -17,7 +18,7 @@ import AIResponseCard from '@/components/ai/AIResponseCard'
 import { useLearnerProfile } from '@/hooks/useLearnerProfile'
 import { useFeatureFlags } from '@/hooks/useFeatureFlags'
 import { useVoice } from '@/hooks/useVoice'
-import { getProviderConfig, isSetupComplete } from '@/lib/security'
+import { getProviderConfig, hasMinimumSetup, isSetupComplete } from '@/lib/security'
 import { getProvider } from '@/lib/providers'
 import { parseAIResponse } from '@/lib/canvas-actions'
 import { createSession, appendMessage, saveCanvasState } from '@/lib/session'
@@ -26,6 +27,7 @@ import type { AICanvasResponse, TKSession } from '@/types'
 
 export default function CanvasPage() {
   const router = useRouter()
+  const { isLoaded, userId } = useAuth()
   const canvasRef = useRef<CanvasWrapperRef>(null)
   const { activeProfile, selectProfile } = useLearnerProfile()
   const flags = useFeatureFlags()
@@ -50,13 +52,19 @@ export default function CanvasPage() {
 
   // Redirect to setup if not configured
   useEffect(() => {
-    if (!isSetupComplete()) {
+    if (!isLoaded) return
+    if (!userId) {
+      router.replace('/sign-in')
+      return
+    }
+    if (!isSetupComplete() && !hasMinimumSetup()) {
       router.replace('/setup')
     }
-  }, [router])
+  }, [isLoaded, router, userId])
 
   // Init session + show profile picker
   useEffect(() => {
+    if (!isLoaded || !userId) return
     async function init() {
       const s = await createSession(
         activeProfile?.id ?? 'guest',
@@ -67,7 +75,7 @@ export default function CanvasPage() {
     }
     init()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [isLoaded, userId])
 
   async function handlePrompt(text: string, imageBase64?: string) {
     const cfg = getProviderConfig()
@@ -139,6 +147,14 @@ export default function CanvasPage() {
     }
   }
 
+  if (!isLoaded) {
+    return (
+      <main className="flex h-screen items-center justify-center bg-white text-sm text-gray-500 dark:bg-gray-950 dark:text-gray-400">
+        Loading TutorKanvas…
+      </main>
+    )
+  }
+
   function handleProfileSelect(profileId: string | null) {
     if (profileId) selectProfile(profileId)
     setProfilePickerOpen(false)
@@ -176,6 +192,10 @@ export default function CanvasPage() {
 
   return (
     <main className="w-screen h-screen overflow-hidden">
+      <div className="fixed right-4 top-16 z-30">
+        <UserButton />
+      </div>
+
       <Toolbar
         sessionName={session?.name}
         hasChanges={hasChanges}
@@ -212,6 +232,15 @@ export default function CanvasPage() {
         }}
         onDismiss={() => setResponse(null)}
       />
+
+      {!response && !isLoading && (
+        <div className="fixed bottom-36 left-1/2 z-20 w-[360px] -translate-x-1/2 rounded-3xl border border-purple-100 bg-white/95 p-5 shadow-2xl dark:border-purple-900/50 dark:bg-gray-900/95">
+          <p className="text-sm font-semibold text-purple-600 dark:text-purple-400">Start here</p>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+            Ask a maths question below, upload a worksheet, or hold the mic to speak to Max.
+          </p>
+        </div>
+      )}
 
       {/* Modals */}
       <ProfilePicker

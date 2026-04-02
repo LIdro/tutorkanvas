@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito } from "next/font/google";
+import { ClerkProvider } from '@clerk/nextjs'
+import ClientAuthSync from '@/components/auth/ClientAuthSync'
 import "./globals.css";
 
 const nunito = Nunito({
@@ -60,7 +62,12 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col font-nunito bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">{children}</body>
+      <body className="min-h-full flex flex-col font-nunito bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
+        <ClerkProvider>
+          <ClientAuthSync />
+          {children}
+        </ClerkProvider>
+      </body>
     </html>
   );
 }

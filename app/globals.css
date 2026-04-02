@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap');
 @import "tailwindcss";
 
 @theme inline {
@@ -79,4 +80,10 @@ body {
 
 .animate-slide-in-right {
   animation: slide-in-right 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.font-patrick-hand {
+  font-family: "Patrick Hand", cursive;
+  font-weight: 400;
+  font-style: normal;
 }

@@ -5,9 +5,15 @@
 // ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    }
+
     const authHeader = req.headers.get('Authorization') ?? ''
     const deepgramKey = authHeader.replace('Token ', '').trim()
 

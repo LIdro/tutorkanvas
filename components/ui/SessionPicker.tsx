@@ -151,7 +151,7 @@ export default function SessionPicker({ open, onClose, onResume }: Props) {
         {sessions.length > 0 && (
           <div className="px-5 py-3 border-t border-gray-100 dark:border-gray-700">
             <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
-              {sessions.length} session{sessions.length !== 1 ? 's' : ''} stored locally
+              {sessions.length} session{sessions.length !== 1 ? 's' : ''} stored locally for this account
             </p>
           </div>
         )}

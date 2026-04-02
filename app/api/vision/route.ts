@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
 import { getProvider } from '@/lib/providers'
 import { buildVisionPrompt } from '@/lib/prompts'
 import type { ProviderConfig, LearnerProfile } from '@/types'
@@ -14,6 +15,11 @@ const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export async function POST(req: NextRequest) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
+    }
+
     const body = await req.json()
     const { imageBase64, providerConfig, profile } = body as {
       imageBase64: string

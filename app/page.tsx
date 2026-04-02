@@ -2,6 +2,7 @@
 // TutorKanvas — Landing Page
 // ─────────────────────────────────────────────
 import Link from 'next/link'
+import AuthActions from '@/components/auth/AuthActions'
 
 export const metadata = {
   title: 'TutorKanvas — AI Maths Tutor for Kids',
@@ -27,6 +28,7 @@ export default function Home() {
           <span className="font-bold text-purple-700 dark:text-purple-400 text-xl">TutorKanvas</span>
         </div>
         <div className="flex items-center gap-3">
+          <AuthActions />
           <a href="https://github.com/LIdro/tutorkanvas" target="_blank" rel="noopener noreferrer"
             className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white/70 dark:bg-gray-800/70">
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -50,7 +52,7 @@ export default function Home() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link href="/setup"
             className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white font-bold px-8 py-4 rounded-2xl text-lg shadow-lg transition-all hover:scale-105">
-            Get Started Free 🚀
+            Get Started 🚀
           </Link>
           <a href="https://github.com/LIdro/tutorkanvas" target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-2 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-500 text-gray-700 dark:text-gray-200 font-semibold px-8 py-4 rounded-2xl text-lg transition-all hover:scale-105">

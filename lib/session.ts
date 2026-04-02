@@ -6,14 +6,31 @@
 import type { TKSession } from '@/types'
 import { generateId, nowISO } from './utils'
 import { getDB, SESSIONS_STORE } from './db'
+import { getStorageUserId } from './storage-user'
 
 const MAX_SESSIONS = 50
+
+function getCurrentUserId(): string {
+  return getStorageUserId() ?? 'anonymous'
+}
+
+async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T | null> {
+  try {
+    const res = await fetch(input, init)
+    if (!res.ok) return null
+    if (res.status === 204) return null
+    return (await res.json()) as T
+  } catch {
+    return null
+  }
+}
 
 // ── CRUD ──────────────────────────────────────
 
 export async function createSession(profileId: string, name?: string): Promise<TKSession> {
   const session: TKSession = {
     id: generateId(),
+    userId: getCurrentUserId(),
     profileId,
     name: name ?? `Session ${new Date().toLocaleDateString()}`,
     createdAt: nowISO(),
@@ -22,6 +39,14 @@ export async function createSession(profileId: string, name?: string): Promise<T
     messages: [],
     topicsCovered: [],
   }
+
+  const remote = await fetchJson<TKSession>('/api/sessions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(session),
+  })
+  if (remote) return remote
+
   const db = await getDB()
   await db.put(SESSIONS_STORE, session)
   await enforceSessionLimit(profileId)
@@ -29,24 +54,44 @@ export async function createSession(profileId: string, name?: string): Promise<T
 }
 
 export async function getSession(id: string): Promise<TKSession | null> {
+  const remote = await fetchJson<TKSession>(`/api/sessions/${id}`)
+  if (remote) return remote
+
   const db = await getDB()
   return (await db.get(SESSIONS_STORE, id)) ?? null
 }
 
 export async function getSessionsByProfile(profileId: string): Promise<TKSession[]> {
+  const remote = await fetchJson<TKSession[]>(`/api/sessions?profileId=${encodeURIComponent(profileId)}`)
+  if (remote) return remote
+
   const db = await getDB()
   const all = await db.getAllFromIndex(SESSIONS_STORE, 'profileId', profileId)
-  return all.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  return all
+    .filter((session) => session.userId === getCurrentUserId())
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 /** Returns ALL sessions across all profiles, sorted newest-first. */
 export async function getSessions(): Promise<TKSession[]> {
+  const remote = await fetchJson<TKSession[]>('/api/sessions')
+  if (remote) return remote
+
   const db = await getDB()
   const all = await db.getAll(SESSIONS_STORE)
-  return all.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  return all
+    .filter((session) => session.userId === getCurrentUserId())
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 export async function updateSession(id: string, updates: Partial<TKSession>): Promise<void> {
+  const remote = await fetch(`/api/sessions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  }).catch(() => null)
+  if (remote?.ok) return
+
   const db = await getDB()
   const existing = await db.get(SESSIONS_STORE, id)
   if (!existing) return
@@ -66,6 +111,9 @@ export async function appendMessage(sessionId: string, message: { role: 'user' |
 }
 
 export async function deleteSession(id: string): Promise<void> {
+  const remote = await fetch(`/api/sessions/${id}`, { method: 'DELETE' }).catch(() => null)
+  if (remote?.ok) return
+
   const db = await getDB()
   await db.delete(SESSIONS_STORE, id)
 }
