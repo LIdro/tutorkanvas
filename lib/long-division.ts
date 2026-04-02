@@ -486,16 +486,16 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
     }
   }
 
-  const summaryAnswerY = nextBaseY + 8
+  const summaryAnswerY = QUOTIENT_Y + 28
   const summaryAnswerText = problem.dividend % problem.divisor === 0
     ? `${problem.dividend} ÷ ${problem.divisor} = ${Math.floor(problem.dividend / problem.divisor)}`
     : `${problem.dividend} ÷ ${problem.divisor} = ${Math.floor(problem.dividend / problem.divisor)} r ${problem.dividend % problem.divisor}`
   nodes['summary.answer'] = {
     id: 'summary.answer',
     role: 'final_answer_text',
-    x: BRACKET_X + 22,
+    x: BRACKET_X + 128,
     y: summaryAnswerY,
-    width: 280,
+    width: 320,
     height: DIGIT_HEIGHT,
     value: '',
     meta: { targetValue: summaryAnswerText, color: 'yellow' },
@@ -612,9 +612,6 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
       actions: [
         { type: 'reveal_result', target: `step.${step.index}.line`, text: 'show' },
         ...getDigitRevealActions(`step.${step.index}.remainder`, String(step.remainder)),
-        ...(step.remainder > 0
-          ? getHighlightActions(`step.${step.index}.remainder`, String(step.remainder), 'yellow')
-          : []),
       ],
       waitFor: 'speech_end',
     })
@@ -656,15 +653,6 @@ function getDigitRevealActions(prefix: string, value: string) {
     type: 'reveal_result' as const,
     target: `${prefix}.${index}`,
     text: digit,
-  }))
-}
-
-function getHighlightActions(prefix: string, value: string, color: string) {
-  return value.split('').map((_, index) => ({
-    type: 'highlight_symbol' as const,
-    target: `${prefix}.${index}`,
-    style: 'glow' as const,
-    color,
   }))
 }
 
@@ -716,10 +704,10 @@ function getConcreteDemoLayout(divisor: number, quotientDigit: number, baseY: nu
     ? Math.max(24, Math.min(34, cellWidth - 12))
     : Math.max(28, Math.min(46, cellWidth - 28))
   const tallyColumnGap = tallyColumns === 1 ? 0 : Math.max(12, Math.floor(groupSize / 3))
-  const tallyRowGap = rapidMode ? 14 : quotientDigit >= 8 ? 18 : quotientDigit >= 5 ? 20 : 24
-  const chunkRowGap = 16
+  const tallyRowGap = rapidMode ? 18 : quotientDigit >= 8 ? 18 : quotientDigit >= 5 ? 20 : 24
+  const chunkRowGap = 22
   const rowHeight = rapidMode
-    ? groupSize + 14 + tallyRows * chunkRowGap + 8
+    ? groupSize + 18 + tallyRows * chunkRowGap + 14
     : groupSize + 22 + tallyRows * tallyRowGap + 10
 
   return {
@@ -740,13 +728,13 @@ function getConcreteDemoLayout(divisor: number, quotientDigit: number, baseY: nu
 }
 
 function formatRapidShareChunks(count: number) {
-  if (count <= 5) return ['|'.repeat(count)]
+  if (count <= 4) return ['|'.repeat(count)]
   const groupsOfFive = Math.floor(count / 5)
   const remainder = count % 5
   const lines: string[] = []
 
   if (groupsOfFive > 0) {
-    lines.push(Array.from({ length: groupsOfFive }, () => '|||||').join(' '))
+    lines.push(Array.from({ length: groupsOfFive }, () => '||||').join(' '))
   }
   if (remainder > 0) {
     lines.push('|'.repeat(remainder))
