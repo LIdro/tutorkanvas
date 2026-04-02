@@ -11,7 +11,7 @@ import { saveCanvasState } from '@/lib/session'
 import { executeCanvasActions } from '@/lib/canvas-actions'
 import { debounce } from '@/lib/utils'
 import { DemonstrationRuntime } from '@/lib/demonstration-runtime'
-import { renderMathExpressionToSvgDataUrl } from '@/lib/math-render'
+import { renderMathExpressionToSvg } from '@/lib/math-render'
 import {
   circleNode,
   crossOutNode,
@@ -105,14 +105,7 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
   ({ sessionId, initialSnapshot, onEditorReady, onCanvasChange }, ref) => {
     const editorRef = useRef<Editor | null>(null)
     const transientShapeIdsRef = useRef<string[]>([])
-    const transientAssetUrlsRef = useRef<string[]>([])
     const presentationTokenRef = useRef(0)
-
-    useEffect(() => {
-      return () => {
-        revokeObjectUrls(transientAssetUrlsRef.current)
-      }
-    }, [])
 
     useImperativeHandle(ref, () => ({
       getSnapshot: () => editorRef.current ? getSnapshot(editorRef.current.store) : null,
@@ -132,8 +125,6 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
         if (!editorRef.current) return
         presentationTokenRef.current += 1
         clearTransientShapes(editorRef.current, transientShapeIdsRef.current)
-        revokeObjectUrls(transientAssetUrlsRef.current)
-        transientAssetUrlsRef.current = []
         transientShapeIdsRef.current = executeCanvasActions(editorRef.current, actions)
       },
       playChalkTalk: async (segments, options) => {
@@ -141,8 +132,6 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
         const editor = editorRef.current
         const token = ++presentationTokenRef.current
         clearTransientShapes(editor, transientShapeIdsRef.current)
-        revokeObjectUrls(transientAssetUrlsRef.current)
-        transientAssetUrlsRef.current = []
         transientShapeIdsRef.current = []
 
         const createdShapeIds: string[] = []
@@ -177,7 +166,7 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
           for (const workingItem of boardStep.working) {
             const layout = getWorkingLayout(workingItem, zones, aggregateBounds)
             const id = layout.renderAsEquation
-              ? await createEquationShape(editor, layout, transientAssetUrlsRef.current)
+              ? await createEquationShape(editor, layout)
               : createChalkTextShape(editor, layout, { animate: true })
             createdShapeIds.push(id)
             if (!layout.renderAsEquation) {
@@ -213,8 +202,6 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
         const editor = editorRef.current
         const token = ++presentationTokenRef.current
         clearTransientShapes(editor, transientShapeIdsRef.current)
-        revokeObjectUrls(transientAssetUrlsRef.current)
-        transientAssetUrlsRef.current = []
         transientShapeIdsRef.current = []
         const before = new Set(editor.getCurrentPageShapeIds())
         let scene = renderLessonScene(editor, script.scene)
@@ -630,31 +617,22 @@ function shouldRenderEquation(text: string): boolean {
   return looksLikeMathExpression(trimmed) && wordCount <= 10 && /[=+\-*/÷×()[\]{}]/.test(trimmed)
 }
 
-async function createEquationShape(
-  editor: Editor,
-  layout: ChalkSegmentLayout,
-  objectUrls: string[]
-): Promise<string> {
-  const equation = await renderMathExpressionToSvgDataUrl(layout.text)
-  const objectUrl = svgDataUrlToObjectUrl(equation.dataUrl)
-  objectUrls.push(objectUrl)
+async function createEquationShape(editor: Editor, layout: ChalkSegmentLayout): Promise<string> {
+  const equation = await renderMathExpressionToSvg(layout.text)
   const assetId = AssetRecordType.createId(`math-${crypto.randomUUID()}`) as any
   const shapeId = createShapeId(`math-${crypto.randomUUID()}`) as unknown as string
+  const file = new File([equation.svgMarkup], 'equation.svg', { type: 'image/svg+xml' })
+  const asset = await editor.getAssetForExternalContent({
+    type: 'file',
+    file,
+    assetId,
+  })
 
-  editor.createAssets([{
-    id: assetId,
-    type: 'image',
-    typeName: 'asset',
-    props: {
-      name: 'equation.svg',
-      src: objectUrl,
-      w: equation.width,
-      h: equation.height,
-      mimeType: 'image/svg+xml',
-      isAnimated: false,
-    },
-    meta: {},
-  } as any])
+  if (!asset) {
+    throw new Error('Could not create equation asset.')
+  }
+
+  editor.createAssets([{ ...asset, id: assetId } as any])
 
   editor.createShape({
     id: shapeId,
@@ -664,8 +642,6 @@ async function createEquationShape(
     props: {
       w: equation.width,
       h: equation.height,
-      playing: false,
-      url: objectUrl,
       assetId,
       crop: null,
       flipX: false,
@@ -675,21 +651,6 @@ async function createEquationShape(
   } as any)
 
   return shapeId
-}
-
-function svgDataUrlToObjectUrl(dataUrl: string): string {
-  const [header, encodedContent = ''] = dataUrl.split(',', 2)
-  const mimeTypeMatch = header.match(/^data:([^;]+)(?:;charset=[^;]+)?(?:;base64)?$/i)
-  const mimeType = mimeTypeMatch?.[1] ?? 'image/svg+xml'
-  const svgMarkup = decodeURIComponent(encodedContent)
-  const blob = new Blob([svgMarkup], { type: mimeType })
-  return URL.createObjectURL(blob)
-}
-
-function revokeObjectUrls(urls: string[]) {
-  for (const url of urls) {
-    URL.revokeObjectURL(url)
-  }
 }
 
 function createZoneLabel(editor: Editor, x: number, y: number, text: string): string {
