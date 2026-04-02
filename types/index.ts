@@ -99,6 +99,71 @@ export interface AICanvasResponse {
   gameConfig?: GameConfig
 }
 
+// ── Lesson Script / Demonstration Runtime ─────
+
+export type LessonSceneKind =
+  | 'vertical-subtraction'
+  | 'vertical-addition'
+  | 'long-division'
+  | 'fractions'
+
+export type LessonPlacement =
+  | 'center'
+  | 'top'
+  | 'right'
+  | 'bottom'
+  | 'left'
+  | 'top-right'
+  | 'top-left'
+  | 'bottom-right'
+  | 'bottom-left'
+
+export interface LessonNode {
+  id: string
+  role: string
+  shapeId?: string
+  x: number
+  y: number
+  width: number
+  height: number
+  value?: string
+  meta?: Record<string, string | number | boolean | null>
+}
+
+export interface LessonScene {
+  id: string
+  kind: LessonSceneKind
+  nodes: Record<string, LessonNode>
+}
+
+export type DemonstrationAction =
+  | { type: 'place_problem'; problem: string; operation?: 'addition' | 'subtraction' | 'multiplication' | 'division' }
+  | { type: 'highlight_symbol'; target: string; style?: 'circle' | 'glow'; color?: string }
+  | { type: 'focus_column'; column: 'ones' | 'tens' | 'hundreds' | 'thousands'; zoom?: number }
+  | { type: 'cross_out'; target: string }
+  | { type: 'write_annotation'; target: string; text: string; placement?: LessonPlacement; color?: string }
+  | { type: 'borrow_from_column'; from: 'tens' | 'hundreds' | 'thousands'; to: 'ones' | 'tens' | 'hundreds' }
+  | { type: 'carry_to_column'; from: 'ones' | 'tens' | 'hundreds'; to: 'tens' | 'hundreds' | 'thousands'; value?: string }
+  | { type: 'reveal_result'; target: string; text: string }
+  | { type: 'ask_check_question'; prompt: string }
+  | { type: 'pause'; durationMs: number }
+
+export interface LessonStep {
+  id: string
+  speech: string
+  teacherNote?: string
+  actions: DemonstrationAction[]
+  focusTargets?: string[]
+  waitFor?: 'speech_end' | 'actions_end' | 'user'
+}
+
+export interface LessonScript {
+  lessonId: string
+  topic: string
+  scene: LessonScene
+  steps: LessonStep[]
+}
+
 // ── Learner Profile ───────────────────────────
 
 export type ExplanationStyle = 'visual' | 'step-by-step' | 'story' | 'auto'
@@ -148,6 +213,69 @@ export interface FeatureFlags {
   serverKeyMode: boolean
 }
 
+// ── AI Interaction Logging ────────────────────
+
+export type AIResponseMode = 'canvas' | 'lesson_script' | 'vision'
+
+export interface AIInteractionLog {
+  /** Unique log entry id */
+  id: string
+  /** Wall-clock timestamp (ISO 8601) */
+  createdAt: string
+  /** Session the interaction belonged to */
+  sessionId: string | null
+  /** Learner profile active at the time */
+  profileId: string | null
+  /** Provider id e.g. 'openrouter' */
+  provider: string
+  /** Model string e.g. 'gpt-4o' */
+  model: string
+  /** Whether this was a chat, lesson_script, or vision call */
+  responseMode: AIResponseMode
+  /** The full system prompt sent to the model */
+  systemPrompt: string
+  /** User-facing messages array (without the system prompt entry) */
+  inputMessages: Array<{ role: string; content: string }>
+  /** Raw text response returned by the model */
+  rawResponse: string
+  /** Parsed canvas actions (for canvas/vision modes) */
+  parsedActions: CanvasAction[] | null
+  /** Parsed lesson script (for lesson_script mode) */
+  parsedLessonScript: LessonScript | null
+  /** Topic detected in the AI response */
+  topic: string | null
+  /** Round-trip latency in milliseconds */
+  latencyMs: number
+  /** Rough token estimate (chars / 4) */
+  tokenEstimate: number
+  /** Whether the call resulted in an error */
+  isError: boolean
+  /** Error message if isError is true */
+  errorMessage: string | null
+  /** Whether a vision image was attached (image data is never stored) */
+  hadImage: boolean
+}
+
+/** Lightweight summary used in the list view — no large text fields */
+export interface AIInteractionSummary {
+  id: string
+  createdAt: string
+  sessionId: string | null
+  profileId: string | null
+  provider: string
+  model: string
+  responseMode: AIResponseMode
+  topic: string | null
+  latencyMs: number
+  tokenEstimate: number
+  isError: boolean
+  hadImage: boolean
+  /** First 120 chars of the user prompt */
+  promptPreview: string
+  /** First 120 chars of the raw response */
+  responsePreview: string
+}
+
 // ── App Settings (stored in localStorage) ────
 
 export interface AppSettings {
@@ -157,5 +285,7 @@ export interface AppSettings {
   parentPinHash: string | null
   activeProfileId: string | null
   voiceEnabled: boolean
+  narrationRate: number
+  explanationStepPauseMs: number
   hasCompletedSetup: boolean
 }

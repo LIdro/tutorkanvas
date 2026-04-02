@@ -16,6 +16,7 @@ import {
   crossOutNode,
   drawArrowBetweenNodes,
   glowNode,
+  placeLineAtNode,
   performBorrow,
   performCarry,
   placeTextAtNode,
@@ -281,6 +282,15 @@ function renderLessonScene(editor: Editor, scene: LessonScene): LessonScene {
   editor.run(() => {
     for (const node of Object.values(scene.nodes)) {
       if (node.role === 'borrow_anchor' || node.role === 'carry_anchor') continue
+
+      if (
+        node.role === 'division_bracket_top' ||
+        node.role === 'division_bracket_vertical'
+      ) {
+        const shapeId = placeLineAtNode(editor, scene, node.id, 'white')
+        nextNodes[node.id] = { ...node, shapeId: shapeId ?? undefined }
+        continue
+      }
 
       if (node.role === 'answer_line') {
         const shapeId = drawArrowBetweenNodes(
@@ -796,6 +806,14 @@ function executeDemonstrationAction(editor: Editor, scene: LessonScene, action: 
     case 'reveal_result': {
       const node = getNode(scene, action.target)
       if (!node) return scene
+      if (
+        node.role === 'division_step_line' ||
+        node.role === 'division_bracket_top' ||
+        node.role === 'division_bracket_vertical'
+      ) {
+        placeLineAtNode(editor, scene, action.target, 'white')
+        return updateNodeValue(scene, action.target, action.text)
+      }
       if (node.value) {
         const rewritten = rewriteNodeValue(editor, scene, action.target, action.text)
         return rewritten?.scene ?? scene

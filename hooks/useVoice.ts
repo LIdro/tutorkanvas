@@ -6,18 +6,27 @@
 // ─────────────────────────────────────────────
 
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { getDeepgramKey, getDeepgramVoice, getVoiceEnabled, saveVoiceEnabled } from '@/lib/security'
+import {
+  getDeepgramKey,
+  getDeepgramVoice,
+  getNarrationRate,
+  getVoiceEnabled,
+  saveVoiceEnabled,
+} from '@/lib/security'
 
 export type VoiceState = 'idle' | 'recording' | 'processing' | 'speaking'
 
 interface UseVoiceOptions {
   onTranscript: (text: string) => void
+  onSpeechStart?: (text: string) => void
+  onSpeechEnd?: (text: string) => void
+  onWordBoundary?: (event: { charIndex: number; elapsedTime?: number; text: string }) => void
 }
 
 // Browser speech recognition type shim
 type AnySpeechRecognition = typeof window extends { SpeechRecognition: infer T } ? T : typeof window extends { webkitSpeechRecognition: infer T } ? T : never
 
-export function useVoice({ onTranscript }: UseVoiceOptions) {
+export function useVoice({ onTranscript, onSpeechStart, onSpeechEnd, onWordBoundary }: UseVoiceOptions) {
   const [voiceState, setVoiceState] = useState<VoiceState>('idle')
   const [voiceEnabled, setVoiceEnabledState] = useState(true)
   const [hasMicSupport, setHasMicSupport] = useState(false)
@@ -132,8 +141,14 @@ export function useVoice({ onTranscript }: UseVoiceOptions) {
   // ── Text-to-Speech ─────────────────────────
 
   const speak = useCallback(async (text: string) => {
-    if (!voiceEnabled || !text.trim()) return
+    const sanitizedText = sanitizeSpeechText(text)
+    if (!voiceEnabled || !sanitizedText.trim()) return
+
+    audioRef.current?.pause()
+    audioRef.current = null
+    window.speechSynthesis?.cancel()
     setVoiceState('speaking')
+    onSpeechStart?.(sanitizedText)
 
     const deepgramKey = getDeepgramKey()
     const voice = getDeepgramVoice()
@@ -146,7 +161,7 @@ export function useVoice({ onTranscript }: UseVoiceOptions) {
             'Content-Type': 'application/json',
             Authorization: `Token ${deepgramKey}`,
           },
-          body: JSON.stringify({ text, voice }),
+          body: JSON.stringify({ text: sanitizedText, voice }),
         })
 
         if (res.status === 200) {
@@ -154,11 +169,24 @@ export function useVoice({ onTranscript }: UseVoiceOptions) {
           const url = URL.createObjectURL(blob)
           const audio = new Audio(url)
           audioRef.current = audio
-          audio.onended = () => {
-            setVoiceState('idle')
-            URL.revokeObjectURL(url)
-          }
-          await audio.play()
+          await new Promise<void>((resolve) => {
+            audio.onended = () => {
+              setVoiceState('idle')
+              onSpeechEnd?.(sanitizedText)
+              URL.revokeObjectURL(url)
+              resolve()
+            }
+            audio.onerror = () => {
+              setVoiceState('idle')
+              URL.revokeObjectURL(url)
+              resolve()
+            }
+            void audio.play().catch(() => {
+              setVoiceState('idle')
+              URL.revokeObjectURL(url)
+              resolve()
+            })
+          })
           return
         }
       } catch {
@@ -168,16 +196,33 @@ export function useVoice({ onTranscript }: UseVoiceOptions) {
 
     // Browser TTS fallback
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = 0.95
-      utterance.pitch = 1.1
-      utterance.onend = () => setVoiceState('idle')
-      window.speechSynthesis.speak(utterance)
+      await new Promise<void>((resolve) => {
+        const utterance = new SpeechSynthesisUtterance(sanitizedText)
+        utterance.rate = getNarrationRate()
+        utterance.pitch = 1.1
+        utterance.onboundary = (event) => {
+          onWordBoundary?.({
+            charIndex: event.charIndex,
+            elapsedTime: (event as SpeechSynthesisEvent).elapsedTime,
+            text: sanitizedText,
+          })
+        }
+        utterance.onend = () => {
+          setVoiceState('idle')
+          onSpeechEnd?.(sanitizedText)
+          resolve()
+        }
+        utterance.onerror = () => {
+          setVoiceState('idle')
+          resolve()
+        }
+        window.speechSynthesis.speak(utterance)
+      })
     } else {
       setVoiceState('idle')
+      onSpeechEnd?.(sanitizedText)
     }
-  }, [voiceEnabled])
+  }, [onSpeechEnd, onSpeechStart, onWordBoundary, voiceEnabled])
 
   const stopSpeaking = useCallback(() => {
     audioRef.current?.pause()
@@ -199,4 +244,57 @@ export function useVoice({ onTranscript }: UseVoiceOptions) {
     speak,
     stopSpeaking,
   }
+}
+
+function sanitizeSpeechText(text: string): string {
+  return normalizeNumbersForSpeech(
+    text
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, '')
+    .replace(/:[a-z0-9_+-]+:/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  )
+}
+
+export function normalizeNumbersForSpeech(text: string): string {
+  return text.replace(/\b\d{2,}\b/g, (match) => {
+    const value = Number(match)
+    if (!Number.isSafeInteger(value)) return match
+    return integerToWords(value)
+  })
+}
+
+function integerToWords(value: number): string {
+  if (value === 0) return 'zero'
+  if (value < 0) return `minus ${integerToWords(Math.abs(value))}`
+
+  const underTwenty = [
+    '', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+    'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+    'seventeen', 'eighteen', 'nineteen',
+  ]
+  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
+  const scales = [
+    { value: 1_000_000_000, label: 'billion' },
+    { value: 1_000_000, label: 'million' },
+    { value: 1_000, label: 'thousand' },
+    { value: 100, label: 'hundred' },
+  ]
+
+  for (const scale of scales) {
+    if (value >= scale.value) {
+      const major = Math.floor(value / scale.value)
+      const remainder = value % scale.value
+      const head = `${integerToWords(major)} ${scale.label}`
+      return remainder ? `${head} ${integerToWords(remainder)}` : head
+    }
+  }
+
+  if (value >= 20) {
+    const major = Math.floor(value / 10)
+    const remainder = value % 10
+    return remainder ? `${tens[major]} ${underTwenty[remainder]}` : tens[major]
+  }
+
+  return underTwenty[value]
 }

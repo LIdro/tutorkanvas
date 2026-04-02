@@ -25,7 +25,7 @@ import {
 } from '@/lib/security'
 import { parseAIResponse } from '@/lib/canvas-actions'
 import { parseLessonScript } from '@/lib/lesson-script'
-import { hydrateLessonScriptScene, shouldUseLessonPlanner } from '@/lib/lesson-planner'
+import { buildLocalLessonScript, hydrateLessonScriptScene, shouldUseLessonPlanner } from '@/lib/lesson-planner'
 import { createSession, appendMessage, saveCanvasState } from '@/lib/session'
 import { getEffectiveUserId, isDevAuthBypassClient, useAuthSafe } from '@/lib/dev-auth'
 import { logInteraction } from '@/lib/ai-logger'
@@ -120,6 +120,7 @@ export default function CanvasPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [session, setSession] = useState<TKSession | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
+  const [teacherNote, setTeacherNote] = useState<string | null>(null)
   const shouldHideCanvasOverlays = settingsOpen || profilePickerOpen || sessionPickerOpen
 
   useEffect(() => {
@@ -165,12 +166,20 @@ export default function CanvasPage() {
   }, [activeProfile?.id, bypassEnabled, effectiveUserId, isLoaded])
 
   async function handlePrompt(text: string, imageBase64?: string) {
-    const cfg = getProviderConfig()
-    if (!cfg) return
-
     setIsLoading(true)
     const t0 = Date.now()
     try {
+      if (!imageBase64) {
+        const localLessonScript = buildLocalLessonScript(text)
+        if (localLessonScript) {
+          await playLessonScript(localLessonScript, text)
+          return
+        }
+      }
+
+      const cfg = getProviderConfig()
+      if (!cfg) return
+
       if (imageBase64) {
         // ── Vision path ──────────────────────────
         const systemPrompt = buildVisionPrompt(activeProfile ?? null)
@@ -427,6 +436,7 @@ export default function CanvasPage() {
 
   async function playLessonScript(script: LessonScript, userPrompt: string) {
     const combinedSpeech = script.steps.map((step) => step.speech).filter(Boolean).join('\n')
+    setTeacherNote(script.steps[0]?.teacherNote ?? null)
 
     await canvasRef.current?.playLessonScript(script, {
       speak: flags.canUseVoiceOutput
@@ -434,8 +444,13 @@ export default function CanvasPage() {
             await speak(text)
           }
         : undefined,
+      onStepStart: (step) => {
+        setTeacherNote(step.teacherNote ?? null)
+      },
       stepPauseMs: getExplanationStepPauseMs(),
     })
+
+    setTeacherNote(null)
 
     if (session) {
       await appendMessage(session.id, { role: 'user', content: userPrompt })
@@ -514,6 +529,13 @@ export default function CanvasPage() {
           onCanvasChange={handleCanvasChange}
         />
       </div>
+
+      {teacherNote && !shouldHideCanvasOverlays && (
+        <div className="pointer-events-none fixed right-6 top-20 z-30 max-w-[220px] rounded-2xl border border-amber-300/70 bg-[#1e2a1f]/95 px-4 py-3 text-white shadow-2xl">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-300">Teacher note</p>
+          <p className="mt-2 text-lg font-semibold leading-tight">{teacherNote}</p>
+        </div>
+      )}
 
       {/* Bottom AI toolbar */}
       {!shouldHideCanvasOverlays && (

@@ -1,0 +1,33 @@
+import { describe, expect, it } from 'vitest'
+import { buildLongDivisionLessonScript, extractLongDivisionProblem, shouldUseLocalLongDivision } from '@/lib/long-division'
+import { normalizeNumbersForSpeech } from '@/hooks/useVoice'
+
+describe('long division planner', () => {
+  it('detects long division prompts', () => {
+    expect(extractLongDivisionProblem('Show me 300 divided by 12')).toEqual({
+      dividend: 300,
+      divisor: 12,
+    })
+    expect(extractLongDivisionProblem('Work through 410 ÷ 2')).toEqual({
+      dividend: 410,
+      divisor: 2,
+    })
+    expect(shouldUseLocalLongDivision('Teach me long division of 300 by 12')).toBe(true)
+  })
+
+  it('builds a deterministic lesson script for long division', () => {
+    const script = buildLongDivisionLessonScript({ dividend: 300, divisor: 12 })
+
+    expect(script?.scene.kind).toBe('long-division')
+    expect(script?.scene.nodes.divisor.value).toBe('12')
+    expect(script?.scene.nodes['dividend.0'].value).toBe('3')
+    expect(script?.steps.some((step) => step.teacherNote === 'Divide')).toBe(true)
+    expect(script?.steps.some((step) => step.teacherNote === 'Bring down')).toBe(true)
+  })
+})
+
+describe('speech normalization', () => {
+  it('reads multi-digit numbers as words', () => {
+    expect(normalizeNumbersForSpeech('12 goes into 300 25 times')).toBe('twelve goes into three hundred twenty five times')
+  })
+})
