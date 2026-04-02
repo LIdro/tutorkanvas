@@ -17,6 +17,7 @@ interface LongDivisionStepData {
   nextDigit?: string
   resultDigits: string
   useConcreteDemo: boolean
+  concreteShareCount: number
 }
 
 const DIGIT_WIDTH = 38
@@ -36,9 +37,11 @@ const DEMO_ORIGIN_X = 80
 const DEMO_GROUP_Y_OFFSET = 6
 const DEMO_GROUP_SIZE = 48
 const DEMO_GROUP_SPACING = 82
-const DEMO_TALLY_SPACING = 18
+const DEMO_TALLY_COLUMN_GAP = 14
+const DEMO_TALLY_ROW_GAP = 22
 const MAX_CONCRETE_DIVISOR = 5
-const MAX_CONCRETE_PARTIAL = 12
+const MAX_CONCRETE_QUOTIENT = 8
+const MAX_CONCRETE_SHARE_COUNT = 40
 
 export function extractLongDivisionProblem(prompt: string): LongDivisionProblem | null {
   const normalized = prompt.trim().toLowerCase()
@@ -214,7 +217,11 @@ function solveLongDivision(dividend: number, divisor: number): LongDivisionStepD
       remainder,
       nextDigit,
       resultDigits: nextDigit !== undefined ? `${remainder}${nextDigit}` : String(remainder),
-      useConcreteDemo: divisor <= MAX_CONCRETE_DIVISOR && partialDividend <= MAX_CONCRETE_PARTIAL,
+      useConcreteDemo:
+        divisor <= MAX_CONCRETE_DIVISOR &&
+        quotientDigit <= MAX_CONCRETE_QUOTIENT &&
+        product <= MAX_CONCRETE_SHARE_COUNT,
+      concreteShareCount: product,
     })
 
     quotientStarted = true
@@ -324,7 +331,7 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
     }
 
     if (step.useConcreteDemo) {
-      const tallyRows = Math.max(1, step.quotientDigit)
+      const tallySlots = Math.max(1, step.quotientDigit)
       for (let groupIndex = 0; groupIndex < problem.divisor; groupIndex += 1) {
         const groupX = DEMO_ORIGIN_X + groupIndex * DEMO_GROUP_SPACING
         nodes[`step.${step.index}.group.${groupIndex}.circle`] = {
@@ -337,12 +344,14 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
           value: '',
         }
 
-        for (let slotIndex = 0; slotIndex < tallyRows; slotIndex += 1) {
+        for (let slotIndex = 0; slotIndex < tallySlots; slotIndex += 1) {
+          const columnOffset = slotIndex % 2 === 0 ? 0 : DEMO_TALLY_COLUMN_GAP
+          const rowIndex = Math.floor(slotIndex / 2)
           nodes[`step.${step.index}.group.${groupIndex}.slot.${slotIndex}`] = createTextNode(
             `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`,
             'demo_group_tally',
-            groupX + 16,
-            baseY + 64 + slotIndex * DEMO_TALLY_SPACING,
+            groupX + 11 + columnOffset,
+            baseY + 64 + rowIndex * DEMO_TALLY_ROW_GAP,
             ''
           )
         }
@@ -379,12 +388,14 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
       lessonSteps.push({
         id: `step_${step.index}_concrete_intro`,
         teacherNote: 'Share equally',
-        speech: `We start with ${step.partialDividend}. We want to share it into ${problem.divisor} equal groups.`,
+        speech: step.concreteShareCount === step.partialDividend
+          ? `We start with ${step.partialDividend}. We want to share it into ${problem.divisor} equal groups.`
+          : `We cannot share all ${step.partialDividend} equally, so we share ${step.concreteShareCount} into ${problem.divisor} equal groups first.`,
         actions: [],
         waitFor: 'speech_end',
       })
 
-      for (let count = 0; count < step.partialDividend; count += 1) {
+      for (let count = 0; count < step.concreteShareCount; count += 1) {
         const groupIndex = count % problem.divisor
         const slotIndex = Math.floor(count / problem.divisor)
         lessonSteps.push({
@@ -401,7 +412,9 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
       lessonSteps.push({
         id: `step_${step.index}_count_groups`,
         teacherNote: 'Count each group',
-        speech: `Now each group has ${step.quotientDigit}. That means ${step.partialDividend} divided by ${problem.divisor} is ${step.quotientDigit}.`,
+        speech: step.remainder === 0
+          ? `Now each group has ${step.quotientDigit}. That means ${step.partialDividend} divided by ${problem.divisor} is ${step.quotientDigit}.`
+          : `Now each group has ${step.quotientDigit}, and ${step.remainder} is left over. So we write ${step.quotientDigit} and keep ${step.remainder} as the remainder for this step.`,
         actions: [
           { type: 'reveal_result', target: quotientNodeId, text: quotientText },
         ],

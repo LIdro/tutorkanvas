@@ -40,6 +40,13 @@ describe('long division planner', () => {
     expect(script?.steps.some((step) => step.id.includes('share_'))).toBe(true)
     expect(script?.steps.some((step) => step.teacherNote === 'Count each group')).toBe(true)
   })
+
+  it('uses concrete sharing for small remainder problems too', () => {
+    const script = buildLongDivisionLessonScript({ dividend: 36, divisor: 5 })
+
+    expect(script?.scene.nodes['step.0.group.0.circle']).toBeDefined()
+    expect(script?.steps.some((step) => step.speech.includes('left over'))).toBe(true)
+  })
 })
 
 describe('speech normalization', () => {
