@@ -36,7 +36,7 @@ const CHAT_REQUEST_TIMEOUT_MS = 45000
 const VISION_REQUEST_TIMEOUT_MS = 45000
 const CONTINUATION_REQUEST_TIMEOUT_MS = 12000
 const MAX_CONTINUATION_PASSES = 3
-const GENERIC_ERROR_MESSAGE = 'I ran into a problem while drawing that. Please try again.'
+const GENERIC_ERROR_MESSAGE = 'I ran into a problem. Please try again.'
 const NETWORK_ERROR_MESSAGE = 'I could not reach the AI service just now. Please try again.'
 
 function getResponseDisplayText(response: AICanvasResponse): string {
@@ -172,6 +172,7 @@ export default function CanvasPage() {
       if (!imageBase64) {
         const localLessonScript = buildLocalLessonScript(text)
         if (localLessonScript) {
+          console.info('[lesson] Using local structured lesson:', localLessonScript.lessonId)
           await playLessonScript(localLessonScript, text)
           return
         }
@@ -445,6 +446,7 @@ export default function CanvasPage() {
           }
         : undefined,
       onStepStart: (step) => {
+        console.info('[lesson] Starting step:', step.id, step.teacherNote ?? '')
         setTeacherNote(step.teacherNote ?? null)
       },
       stepPauseMs: getExplanationStepPauseMs(),

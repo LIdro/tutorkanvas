@@ -12,6 +12,10 @@ describe('long division planner', () => {
       dividend: 250,
       divisor: 5,
     })
+    expect(extractLongDivisionProblem('Divide 100 by five with long division.')).toEqual({
+      dividend: 100,
+      divisor: 5,
+    })
     expect(extractLongDivisionProblem('Work through 410 ÷ 2')).toEqual({
       dividend: 410,
       divisor: 2,

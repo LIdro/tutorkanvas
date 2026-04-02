@@ -56,6 +56,19 @@ export function extractLongDivisionProblem(prompt: string): LongDivisionProblem 
     return toProblem(longDivisionMatch[1], longDivisionMatch[2])
   }
 
+  const flexiblePatterns = [
+    /(?:how\s+to\s+)?divide\s+(.+?)\s+by\s+(.+?)(?:\s+with\b|\s+using\b|\s+step\b|[?.!,]|$)/,
+    /(.+?)\s+divided\s+by\s+(.+?)(?:\s+with\b|\s+using\b|\s+step\b|[?.!,]|$)/,
+    /long\s+division\s+of\s+(.+?)\s+by\s+(.+?)(?:\s+with\b|\s+using\b|\s+step\b|[?.!,]|$)/,
+  ]
+
+  for (const pattern of flexiblePatterns) {
+    const match = normalized.match(pattern)
+    if (!match) continue
+    const problem = toProblem(match[1], match[2])
+    if (problem) return problem
+  }
+
   return null
 }
 
@@ -87,10 +100,77 @@ export function buildLongDivisionLessonScript(problem: LongDivisionProblem): Les
 }
 
 function toProblem(dividendRaw: string, divisorRaw: string): LongDivisionProblem | null {
-  const dividend = Number(dividendRaw)
-  const divisor = Number(divisorRaw)
+  const dividend = parseFlexibleInteger(dividendRaw)
+  const divisor = parseFlexibleInteger(divisorRaw)
   if (Number.isNaN(dividend) || Number.isNaN(divisor) || divisor <= 0) return null
   return { dividend, divisor }
+}
+
+function parseFlexibleInteger(raw: string): number {
+  const normalized = raw.trim().toLowerCase().replace(/-/g, ' ').replace(/\s+/g, ' ')
+  if (!normalized) return Number.NaN
+  if (/^\d+$/.test(normalized)) return Number(normalized)
+
+  const units: Record<string, number> = {
+    zero: 0,
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+    thirteen: 13,
+    fourteen: 14,
+    fifteen: 15,
+    sixteen: 16,
+    seventeen: 17,
+    eighteen: 18,
+    nineteen: 19,
+  }
+
+  const tens: Record<string, number> = {
+    twenty: 20,
+    thirty: 30,
+    forty: 40,
+    fifty: 50,
+    sixty: 60,
+    seventy: 70,
+    eighty: 80,
+    ninety: 90,
+  }
+
+  let total = 0
+  let current = 0
+
+  for (const token of normalized.split(' ')) {
+    if (token === 'and') continue
+    if (token in units) {
+      current += units[token]
+      continue
+    }
+    if (token in tens) {
+      current += tens[token]
+      continue
+    }
+    if (token === 'hundred') {
+      current = (current || 1) * 100
+      continue
+    }
+    if (token === 'thousand') {
+      total += (current || 1) * 1000
+      current = 0
+      continue
+    }
+    return Number.NaN
+  }
+
+  return total + current
 }
 
 function solveLongDivision(dividend: number, divisor: number): LongDivisionStepData[] {
