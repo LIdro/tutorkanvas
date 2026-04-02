@@ -32,6 +32,14 @@ describe('long division planner', () => {
     expect(script?.steps.some((step) => step.teacherNote === 'Divide')).toBe(true)
     expect(script?.steps.some((step) => step.teacherNote === 'Bring down')).toBe(true)
   })
+
+  it('uses concrete sharing steps for small division problems', () => {
+    const script = buildLongDivisionLessonScript({ dividend: 66, divisor: 2 })
+
+    expect(script?.scene.nodes['step.0.group.0.circle']).toBeDefined()
+    expect(script?.steps.some((step) => step.id.includes('share_'))).toBe(true)
+    expect(script?.steps.some((step) => step.teacherNote === 'Count each group')).toBe(true)
+  })
 })
 
 describe('speech normalization', () => {

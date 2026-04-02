@@ -78,6 +78,18 @@ function createEllipse(editor: Editor, x: number, y: number, width: number, heig
   return id
 }
 
+export function placeEllipseAtNode(
+  editor: Editor,
+  scene: LessonScene,
+  nodeId: string,
+  color: string = 'white',
+  fill: 'none' | 'semi' = 'none'
+): string | null {
+  const node = getNode(scene, nodeId)
+  if (!node) return null
+  return createEllipse(editor, node.x, node.y, node.width, node.height, color, fill)
+}
+
 function createLine(editor: Editor, x: number, y: number, width: number, height: number, color: string = 'white') {
   const id = nextShapeId('line')
   editor.createShape({

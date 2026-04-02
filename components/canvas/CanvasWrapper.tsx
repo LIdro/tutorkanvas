@@ -16,6 +16,7 @@ import {
   crossOutNode,
   drawArrowBetweenNodes,
   glowNode,
+  placeEllipseAtNode,
   placeLineAtNode,
   performBorrow,
   performCarry,
@@ -288,6 +289,12 @@ function renderLessonScene(editor: Editor, scene: LessonScene): LessonScene {
         node.role === 'division_bracket_vertical'
       ) {
         const shapeId = placeLineAtNode(editor, scene, node.id, 'white')
+        nextNodes[node.id] = { ...node, shapeId: shapeId ?? undefined }
+        continue
+      }
+
+      if (node.role === 'demo_group_circle') {
+        const shapeId = placeEllipseAtNode(editor, scene, node.id, 'light-blue')
         nextNodes[node.id] = { ...node, shapeId: shapeId ?? undefined }
         continue
       }

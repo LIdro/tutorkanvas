@@ -16,6 +16,7 @@ interface LongDivisionStepData {
   remainder: number
   nextDigit?: string
   resultDigits: string
+  useConcreteDemo: boolean
 }
 
 const DIGIT_WIDTH = 38
@@ -31,6 +32,13 @@ const DIVIDEND_Y = ORIGIN_Y + 8
 const QUOTIENT_Y = ORIGIN_Y - 58
 const STEP_START_Y = ORIGIN_Y + 86
 const STEP_HEIGHT = 124
+const DEMO_ORIGIN_X = 80
+const DEMO_GROUP_Y_OFFSET = 6
+const DEMO_GROUP_SIZE = 48
+const DEMO_GROUP_SPACING = 82
+const DEMO_TALLY_SPACING = 18
+const MAX_CONCRETE_DIVISOR = 5
+const MAX_CONCRETE_PARTIAL = 12
 
 export function extractLongDivisionProblem(prompt: string): LongDivisionProblem | null {
   const normalized = prompt.trim().toLowerCase()
@@ -206,6 +214,7 @@ function solveLongDivision(dividend: number, divisor: number): LongDivisionStepD
       remainder,
       nextDigit,
       resultDigits: nextDigit !== undefined ? `${remainder}${nextDigit}` : String(remainder),
+      useConcreteDemo: divisor <= MAX_CONCRETE_DIVISOR && partialDividend <= MAX_CONCRETE_PARTIAL,
     })
 
     quotientStarted = true
@@ -313,6 +322,32 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
       )
       nodes[`step.${step.index}.bringDown`].meta = { targetValue: step.nextDigit }
     }
+
+    if (step.useConcreteDemo) {
+      const tallyRows = Math.max(1, step.quotientDigit)
+      for (let groupIndex = 0; groupIndex < problem.divisor; groupIndex += 1) {
+        const groupX = DEMO_ORIGIN_X + groupIndex * DEMO_GROUP_SPACING
+        nodes[`step.${step.index}.group.${groupIndex}.circle`] = {
+          id: `step.${step.index}.group.${groupIndex}.circle`,
+          role: 'demo_group_circle',
+          x: groupX,
+          y: baseY + DEMO_GROUP_Y_OFFSET,
+          width: DEMO_GROUP_SIZE,
+          height: DEMO_GROUP_SIZE,
+          value: '',
+        }
+
+        for (let slotIndex = 0; slotIndex < tallyRows; slotIndex += 1) {
+          nodes[`step.${step.index}.group.${groupIndex}.slot.${slotIndex}`] = createTextNode(
+            `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`,
+            'demo_group_tally',
+            groupX + 16,
+            baseY + 64 + slotIndex * DEMO_TALLY_SPACING,
+            ''
+          )
+        }
+      }
+    }
   }
 
   return {
@@ -340,15 +375,49 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
     const quotientNodeId = `quotient.${Math.max(0, step.endIndex - quotientStartIndex)}`
     const quotientText = quotientDigits[Math.max(0, step.endIndex - quotientStartIndex)] ?? String(step.quotientDigit)
 
-    lessonSteps.push({
-      id: `step_${step.index}_divide`,
-      teacherNote: 'Divide',
-      speech: `How many times does ${problem.divisor} go into ${step.partialDividend}? It goes ${step.quotientDigit} times.`,
-      actions: [
-        { type: 'reveal_result', target: quotientNodeId, text: quotientText },
-      ],
-      waitFor: 'speech_end',
-    })
+    if (step.useConcreteDemo) {
+      lessonSteps.push({
+        id: `step_${step.index}_concrete_intro`,
+        teacherNote: 'Share equally',
+        speech: `We start with ${step.partialDividend}. We want to share it into ${problem.divisor} equal groups.`,
+        actions: [],
+        waitFor: 'speech_end',
+      })
+
+      for (let count = 0; count < step.partialDividend; count += 1) {
+        const groupIndex = count % problem.divisor
+        const slotIndex = Math.floor(count / problem.divisor)
+        lessonSteps.push({
+          id: `step_${step.index}_share_${count}`,
+          teacherNote: 'Share equally',
+          speech: `${countWord(count + 1)}.`,
+          actions: [
+            { type: 'reveal_result', target: `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`, text: '|' },
+          ],
+          waitFor: 'speech_end',
+        })
+      }
+
+      lessonSteps.push({
+        id: `step_${step.index}_count_groups`,
+        teacherNote: 'Count each group',
+        speech: `Now each group has ${step.quotientDigit}. That means ${step.partialDividend} divided by ${problem.divisor} is ${step.quotientDigit}.`,
+        actions: [
+          { type: 'reveal_result', target: quotientNodeId, text: quotientText },
+        ],
+        waitFor: 'speech_end',
+      })
+    } else {
+      lessonSteps.push({
+        id: `step_${step.index}_divide`,
+        teacherNote: 'Divide',
+        speech: `How many times does ${problem.divisor} go into ${step.partialDividend}? It goes ${step.quotientDigit} times.`,
+        actions: [
+          { type: 'reveal_result', target: quotientNodeId, text: quotientText },
+        ],
+        waitFor: 'speech_end',
+      })
+    }
 
     lessonSteps.push({
       id: `step_${step.index}_multiply`,
@@ -438,4 +507,23 @@ function createLineNode(
 
 function getDigitX(index: number): number {
   return DIVIDEND_START_X + index * COLUMN_SPACING
+}
+
+function countWord(value: number): string {
+  const words = [
+    'one',
+    'two',
+    'three',
+    'four',
+    'five',
+    'six',
+    'seven',
+    'eight',
+    'nine',
+    'ten',
+    'eleven',
+    'twelve',
+  ]
+
+  return words[value - 1] ?? String(value)
 }
