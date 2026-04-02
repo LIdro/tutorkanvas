@@ -625,13 +625,36 @@ function splitExplanationIntoSegments(text: string): string[] {
 
   const sourceSegments = numbered.length > 1 ? numbered : cleaned.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean)
 
-  return sourceSegments.flatMap((segment) => {
-    if (segment.length <= 160) return [segment]
-    return segment
-      .split(/(?<=[.!?])\s+/)
-      .map((part) => part.trim())
-      .filter(Boolean)
-  })
+  return sourceSegments.flatMap((segment) => chunkSegmentBySentence(segment, 120))
+}
+
+function chunkSegmentBySentence(segment: string, maxLength: number): string[] {
+  const sentences = segment
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  if (!sentences.length) return []
+  if (sentences.length === 1 && sentences[0].length <= maxLength) return sentences
+
+  const chunks: string[] = []
+  let current = ''
+
+  for (const sentence of sentences) {
+    const next = current ? `${current} ${sentence}` : sentence
+    if (current && next.length > maxLength) {
+      chunks.push(current.trim())
+      current = sentence
+    } else {
+      current = next
+    }
+  }
+
+  if (current.trim()) {
+    chunks.push(current.trim())
+  }
+
+  return chunks
 }
 
 function needsContinuationNudge(prompt: string, responseText: string): boolean {

@@ -5,13 +5,12 @@
 // ─────────────────────────────────────────────
 
 import { useEffect, useCallback, forwardRef, useImperativeHandle, useRef } from 'react'
-import { Tldraw, useEditor, getSnapshot, createShapeId, AssetRecordType, Box, type Editor } from 'tldraw'
+import { Tldraw, useEditor, getSnapshot, createShapeId, Box, type Editor } from 'tldraw'
 import 'tldraw/tldraw.css'
 import { saveCanvasState } from '@/lib/session'
 import { executeCanvasActions } from '@/lib/canvas-actions'
 import { debounce } from '@/lib/utils'
 import { DemonstrationRuntime } from '@/lib/demonstration-runtime'
-import { renderMathExpressionToSvg } from '@/lib/math-render'
 import {
   circleNode,
   crossOutNode,
@@ -340,7 +339,7 @@ function createChalkTextShape(
       color: 'white',
       font: 'draw',
       textAlign: layout.textAlign,
-      autoSize: true,
+      autoSize: layout.autoSize,
       w: layout.width,
       scale: 1,
     },
@@ -359,6 +358,7 @@ type ChalkSegmentLayout = {
   textAlign: 'start' | 'middle'
   isMath: boolean
   renderAsEquation: boolean
+  autoSize: boolean
 }
 
 type TeachingBoardZones = {
@@ -393,6 +393,7 @@ function getChalkLayout(text: string, viewportBounds: Box, aggregateBounds: Box 
       textAlign: 'middle',
       isMath,
       renderAsEquation: shouldRenderEquation(text),
+      autoSize: isMath,
     }
   }
 
@@ -405,16 +406,17 @@ function getChalkLayout(text: string, viewportBounds: Box, aggregateBounds: Box 
     textAlign: 'start',
     isMath,
     renderAsEquation: shouldRenderEquation(text),
+    autoSize: !wrappedText.includes('\n'),
   }
 }
 
 function getTeachingBoardZones(viewportBounds: Box): TeachingBoardZones {
-  const rightGutter = Math.max(72, viewportBounds.width * 0.08)
-  const commentaryWidth = Math.max(220, viewportBounds.width * 0.24)
+  const rightGutter = Math.max(120, viewportBounds.width * 0.14)
+  const commentaryWidth = Math.max(180, viewportBounds.width * 0.2)
   const commentaryHeight = Math.max(140, viewportBounds.height * 0.24)
   const workspaceWidth = Math.min(
-    viewportBounds.width * 0.58,
-    viewportBounds.width - commentaryWidth - rightGutter - 120
+    viewportBounds.width * 0.54,
+    viewportBounds.width - commentaryWidth - rightGutter - 140
   )
 
   return {
@@ -458,6 +460,7 @@ function analyzeTeachingSegment(segment: string, zones: TeachingBoardZones): Tea
           textAlign: 'start',
           isMath: false,
           renderAsEquation: false,
+          autoSize: false,
         }
       : null,
     working: workingItems,
@@ -470,7 +473,7 @@ function buildCommentaryCue(segment: string): string {
   const firstSentence = (stepMatch
     ? `${stepMatch[1].trim()} ${stepMatch[2].split(/(?<=[.!?])\s+/)[0]?.trim() ?? ''}`.trim()
     : stripped.split(/(?<=[.!?])\s+/)[0]?.trim() ?? stripped)
-  return wrapTextForBoard(firstSentence, 22)
+  return wrapTextForBoard(firstSentence, 14)
 }
 
 function extractWorkingItems(segment: string): string[] {
@@ -618,39 +621,11 @@ function shouldRenderEquation(text: string): boolean {
 }
 
 async function createEquationShape(editor: Editor, layout: ChalkSegmentLayout): Promise<string> {
-  const equation = await renderMathExpressionToSvg(layout.text)
-  const assetId = AssetRecordType.createId(`math-${crypto.randomUUID()}`) as any
-  const shapeId = createShapeId(`math-${crypto.randomUUID()}`) as unknown as string
-  const file = new File([equation.svgMarkup], 'equation.svg', { type: 'image/svg+xml' })
-  const asset = await editor.getAssetForExternalContent({
-    type: 'file',
-    file,
-    assetId,
+  return createChalkTextShape(editor, {
+    ...layout,
+    text: formatEquationForBoard(layout.text),
+    autoSize: true,
   })
-
-  if (!asset) {
-    throw new Error('Could not create equation asset.')
-  }
-
-  editor.createAssets([{ ...asset, id: assetId } as any])
-
-  editor.createShape({
-    id: shapeId,
-    type: 'image',
-    x: layout.textAlign === 'middle' ? layout.x - equation.width / 2 : layout.x,
-    y: layout.y,
-    props: {
-      w: equation.width,
-      h: equation.height,
-      assetId,
-      crop: null,
-      flipX: false,
-      flipY: false,
-      altText: layout.text,
-    },
-  } as any)
-
-  return shapeId
 }
 
 function createZoneLabel(editor: Editor, x: number, y: number, text: string): string {
@@ -748,6 +723,17 @@ function getRevealTextSlice(text: string, progress: number): string {
 function getRevealDurationMs(text: string, minMs: number, maxMs: number): number {
   const estimated = text.trim().length * 32
   return Math.max(minMs, Math.min(maxMs, estimated))
+}
+
+function formatEquationForBoard(text: string): string {
+  return text
+    .replace(/\s*\/\s*/g, ' / ')
+    .replace(/\s*\*\s*/g, ' × ')
+    .replace(/\s*\+\s*/g, ' + ')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/\s*=\s*/g, ' = ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function toRichText(plain: string) {
