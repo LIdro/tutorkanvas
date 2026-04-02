@@ -72,6 +72,30 @@ describe('long division planner', () => {
     expect(script?.scene.nodes['step.0.group.0.circle']).toBeDefined()
     expect(script?.steps.some((step) => step.id.includes('share_'))).toBe(true)
   })
+
+  it('keeps using the concrete sharing path for younger learners with larger divisors', () => {
+    const youngLearner: LearnerProfile = {
+      id: 'profile-young-large',
+      userId: 'user-1',
+      name: 'Juniper',
+      age: 6,
+      avatar: '🧒',
+      grade: '1',
+      topicsAttempted: {},
+      topicStars: {},
+      commonErrors: [],
+      preferredStyle: 'step-by-step',
+      sessionCount: 0,
+      lastActive: new Date().toISOString(),
+      totalStars: 0,
+      aiNotes: [],
+    }
+
+    const script = buildLongDivisionLessonScript({ dividend: 84, divisor: 7 }, youngLearner)
+
+    expect(script?.scene.nodes['step.0.group.6.circle']).toBeDefined()
+    expect(script?.steps.some((step) => step.id.includes('share_'))).toBe(true)
+  })
 })
 
 describe('speech normalization', () => {

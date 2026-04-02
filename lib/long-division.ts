@@ -37,14 +37,15 @@ const DEMO_ORIGIN_X = 80
 const DEMO_GROUP_Y_OFFSET = 6
 const DEMO_GROUP_SIZE = 48
 const DEMO_GROUP_SPACING = 82
-const DEMO_TALLY_COLUMN_GAP = 14
-const DEMO_TALLY_ROW_GAP = 22
+const DEMO_TALLY_COLUMN_GAP = 18
+const DEMO_TALLY_ROW_GAP = 30
 const MAX_CONCRETE_DIVISOR = 5
 const MAX_CONCRETE_QUOTIENT = 8
 const MAX_CONCRETE_SHARE_COUNT = 40
 
 interface LongDivisionTeachingProfile {
   shouldPreferConcreteDemo: boolean
+  forceConcreteDemo: boolean
   maxConcreteDivisor: number
   maxConcreteQuotient: number
   maxConcreteShareCount: number
@@ -261,6 +262,10 @@ function shouldUseConcreteDemo(input: {
     )
   }
 
+  if (teachingProfile.forceConcreteDemo) {
+    return quotientDigit >= 0 && product >= 0
+  }
+
   return (
     divisor <= teachingProfile.maxConcreteDivisor &&
     quotientDigit <= teachingProfile.maxConcreteQuotient &&
@@ -272,6 +277,7 @@ function getTeachingProfile(profile: LearnerProfile | null): LongDivisionTeachin
   if (!profile) {
     return {
       shouldPreferConcreteDemo: false,
+      forceConcreteDemo: false,
       maxConcreteDivisor: MAX_CONCRETE_DIVISOR,
       maxConcreteQuotient: MAX_CONCRETE_QUOTIENT,
       maxConcreteShareCount: MAX_CONCRETE_SHARE_COUNT,
@@ -285,15 +291,17 @@ function getTeachingProfile(profile: LearnerProfile | null): LongDivisionTeachin
   if (isYoungLearner) {
     return {
       shouldPreferConcreteDemo: true,
-      maxConcreteDivisor: 10,
-      maxConcreteQuotient: 10,
-      maxConcreteShareCount: 60,
+      forceConcreteDemo: true,
+      maxConcreteDivisor: Number.POSITIVE_INFINITY,
+      maxConcreteQuotient: Number.POSITIVE_INFINITY,
+      maxConcreteShareCount: Number.POSITIVE_INFINITY,
     }
   }
 
   if (profile.preferredStyle === 'visual') {
     return {
       shouldPreferConcreteDemo: true,
+      forceConcreteDemo: false,
       maxConcreteDivisor: 7,
       maxConcreteQuotient: 9,
       maxConcreteShareCount: 45,
@@ -302,6 +310,7 @@ function getTeachingProfile(profile: LearnerProfile | null): LongDivisionTeachin
 
   return {
     shouldPreferConcreteDemo: false,
+    forceConcreteDemo: false,
     maxConcreteDivisor: MAX_CONCRETE_DIVISOR,
     maxConcreteQuotient: MAX_CONCRETE_QUOTIENT,
     maxConcreteShareCount: MAX_CONCRETE_SHARE_COUNT,
@@ -427,8 +436,8 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
           nodes[`step.${step.index}.group.${groupIndex}.slot.${slotIndex}`] = createTextNode(
             `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`,
             'demo_group_tally',
-            groupX + 11 + columnOffset,
-            baseY + 64 + rowIndex * DEMO_TALLY_ROW_GAP,
+            groupX + 9 + columnOffset,
+            baseY + 68 + rowIndex * DEMO_TALLY_ROW_GAP,
             ''
           )
         }
