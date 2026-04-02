@@ -8,6 +8,7 @@
     "types": ["node"],
     "strict": true,
     "noEmit": true,
+    "baseUrl": ".",
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",
