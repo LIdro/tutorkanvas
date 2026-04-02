@@ -3,28 +3,41 @@
 // All data stays on the user's device.
 // ─────────────────────────────────────────────
 
-import type { LearnerProfile } from '@/types'
+import type { ExplanationStyle, LearnerProfile } from '@/types'
 import { generateId, nowISO } from './utils'
 import { getDB, PROFILES_STORE } from './db'
 import { getStorageUserId } from './storage-user'
+
+let remoteProfilesApiAvailable = true
 
 function getCurrentUserId(): string {
   return getStorageUserId() ?? 'anonymous'
 }
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T | null> {
+  if (!remoteProfilesApiAvailable) return null
   try {
     const res = await fetch(input, init)
+    if (res.status === 503) {
+      remoteProfilesApiAvailable = false
+      return null
+    }
     if (!res.ok) return null
     return (await res.json()) as T
   } catch {
+    remoteProfilesApiAvailable = false
     return null
   }
 }
 
 // ── CRUD ──────────────────────────────────────
 
-export async function createProfile(name: string, age?: number, grade?: string): Promise<LearnerProfile> {
+export async function createProfile(
+  name: string,
+  age?: number,
+  grade?: string,
+  preferredStyle: ExplanationStyle = 'auto'
+): Promise<LearnerProfile> {
   const profile: LearnerProfile = {
     id: generateId(),
     userId: getCurrentUserId(),
@@ -35,7 +48,7 @@ export async function createProfile(name: string, age?: number, grade?: string):
     topicsAttempted: {},
     topicStars: {},
     commonErrors: [],
-    preferredStyle: 'auto',
+    preferredStyle,
     sessionCount: 0,
     lastActive: nowISO(),
     totalStars: 0,
@@ -73,12 +86,21 @@ export async function getAllProfiles(): Promise<LearnerProfile[]> {
 }
 
 export async function updateProfile(id: string, updates: Partial<LearnerProfile>): Promise<void> {
-  const remote = await fetch(`/api/profiles/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  }).catch(() => null)
-  if (remote?.ok) return
+  if (remoteProfilesApiAvailable) {
+    const remote = await fetch(`/api/profiles/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch(() => {
+      remoteProfilesApiAvailable = false
+      return null
+    })
+    if (remote?.status === 503) {
+      remoteProfilesApiAvailable = false
+    } else if (remote?.ok) {
+      return
+    }
+  }
 
   const db = await getDB()
   const existing = await db.get(PROFILES_STORE, id)
@@ -87,8 +109,17 @@ export async function updateProfile(id: string, updates: Partial<LearnerProfile>
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  const remote = await fetch(`/api/profiles/${id}`, { method: 'DELETE' }).catch(() => null)
-  if (remote?.ok) return
+  if (remoteProfilesApiAvailable) {
+    const remote = await fetch(`/api/profiles/${id}`, { method: 'DELETE' }).catch(() => {
+      remoteProfilesApiAvailable = false
+      return null
+    })
+    if (remote?.status === 503) {
+      remoteProfilesApiAvailable = false
+    } else if (remote?.ok) {
+      return
+    }
+  }
 
   const db = await getDB()
   await db.delete(PROFILES_STORE, id)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildLongDivisionLessonScript, extractLongDivisionProblem, shouldUseLocalLongDivision } from '@/lib/long-division'
 import { normalizeNumbersForSpeech } from '@/hooks/useVoice'
+import type { LearnerProfile } from '@/types'
 
 describe('long division planner', () => {
   it('detects long division prompts', () => {
@@ -46,6 +47,30 @@ describe('long division planner', () => {
 
     expect(script?.scene.nodes['step.0.group.0.circle']).toBeDefined()
     expect(script?.steps.some((step) => step.speech.includes('left over'))).toBe(true)
+  })
+
+  it('uses the concrete sharing path for younger learners on larger simple division steps', () => {
+    const youngLearner: LearnerProfile = {
+      id: 'profile-young',
+      userId: 'user-1',
+      name: 'Juniper',
+      age: 6,
+      avatar: '🧒',
+      grade: '1',
+      topicsAttempted: {},
+      topicStars: {},
+      commonErrors: [],
+      preferredStyle: 'step-by-step',
+      sessionCount: 0,
+      lastActive: new Date().toISOString(),
+      totalStars: 0,
+      aiNotes: [],
+    }
+
+    const script = buildLongDivisionLessonScript({ dividend: 50, divisor: 7 }, youngLearner)
+
+    expect(script?.scene.nodes['step.0.group.0.circle']).toBeDefined()
+    expect(script?.steps.some((step) => step.id.includes('share_'))).toBe(true)
   })
 })
 

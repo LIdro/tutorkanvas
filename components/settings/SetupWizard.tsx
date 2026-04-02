@@ -6,7 +6,6 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@clerk/nextjs'
 import { Eye, EyeOff, ExternalLink, ChevronRight, ChevronLeft, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -18,6 +17,7 @@ import {
 import { PROVIDERS, getDefaultModel } from '@/lib/providers'
 import type { ProviderID } from '@/types'
 import { useLearnerProfile } from '@/hooks/useLearnerProfile'
+import { isDevAuthBypassClient, useAuthSafe } from '@/lib/dev-auth'
 
 const DEEPGRAM_VOICES = [
   { id: 'aura-asteria-en', name: 'Asteria — Warm & friendly (recommended)' },
@@ -26,12 +26,20 @@ const DEEPGRAM_VOICES = [
   { id: 'aura-athena-en',  name: 'Athena — British & precise' },
 ]
 
+const AGE_RANGE_OPTIONS = [
+  { id: '5-7', label: 'Ages 5-7', age: 6, style: 'step-by-step' as const },
+  { id: '8-10', label: 'Ages 8-10', age: 9, style: 'visual' as const },
+  { id: '11-13', label: 'Ages 11-13', age: 12, style: 'auto' as const },
+  { id: '14-18', label: 'Ages 14-18', age: 16, style: 'auto' as const },
+]
+
 const STEP_LABELS = ['Welcome', 'PIN', 'AI Setup', 'Voice', 'Profiles', 'Tour']
 const TOTAL_STEPS = STEP_LABELS.length
 
 export default function SetupWizard() {
   const router = useRouter()
-  const { isLoaded } = useAuth()
+  const { isLoaded } = useAuthSafe()
+  const bypassEnabled = isDevAuthBypassClient()
   const { addProfile } = useLearnerProfile()
 
   const [step, setStep] = useState(0)
@@ -58,10 +66,13 @@ export default function SetupWizard() {
   const [childName, setChildName] = useState('')
   const [childAge, setChildAge] = useState('')
   const [childGrade, setChildGrade] = useState('')
+  const [childAgeRange, setChildAgeRange] = useState('5-7')
   const [addedProfiles, setAddedProfiles] = useState<string[]>([])
 
   useEffect(() => {
-    if (!isLoaded) return
+    // In bypass mode Clerk is not mounted, so isLoaded will never become true.
+    // Skip the guard and run initialisation immediately.
+    if (!isLoaded && !bypassEnabled) return
 
     const existingProvider = getProviderConfig()
     if (existingProvider) {
@@ -123,9 +134,15 @@ export default function SetupWizard() {
 
   async function handleAddProfile() {
     if (!childName.trim()) return
-    await addProfile(childName.trim(), childAge ? parseInt(childAge) : undefined, childGrade || undefined)
+    const selectedRange = AGE_RANGE_OPTIONS.find((option) => option.id === childAgeRange) ?? AGE_RANGE_OPTIONS[0]
+    await addProfile(
+      childName.trim(),
+      childAge ? parseInt(childAge) : selectedRange.age,
+      childGrade || undefined,
+      selectedRange.style
+    )
     setAddedProfiles((p) => [...p, childName.trim()])
-    setChildName(''); setChildAge(''); setChildGrade('')
+    setChildName(''); setChildAge(''); setChildGrade(''); setChildAgeRange('5-7')
   }
 
   async function handleFinish() {
@@ -135,7 +152,7 @@ export default function SetupWizard() {
 
   const providerMeta = PROVIDERS.find((p) => p.id === providerId)!
 
-  if (!isLoaded) {
+  if (!isLoaded && !bypassEnabled) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-purple-50 via-blue-50 to-green-50 p-4 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
         <div className="rounded-3xl bg-white px-6 py-4 text-sm text-gray-500 shadow-xl dark:bg-gray-900 dark:text-gray-400">
@@ -305,6 +322,20 @@ export default function SetupWizard() {
                 <div className="flex gap-2">
                   <input type="number" placeholder="Age" min={4} max={18} value={childAge} onChange={(e) => setChildAge(e.target.value)} className="input-field w-24" />
                   <input type="text" placeholder="Grade / Year (optional)" value={childGrade} onChange={(e) => setChildGrade(e.target.value)} className="input-field flex-1" />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                    Explanation age range
+                  </label>
+                  <select
+                    value={childAgeRange}
+                    onChange={(e) => setChildAgeRange(e.target.value)}
+                    className="input-field"
+                  >
+                    {AGE_RANGE_OPTIONS.map((option) => (
+                      <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <button onClick={handleAddProfile} disabled={!childName.trim()} className="btn-secondary w-full">
                   Add Profile

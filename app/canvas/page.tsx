@@ -170,7 +170,7 @@ export default function CanvasPage() {
     const t0 = Date.now()
     try {
       if (!imageBase64) {
-        const localLessonScript = buildLocalLessonScript(text)
+        const localLessonScript = buildLocalLessonScript(text, activeProfile ?? null)
         if (localLessonScript) {
           console.info('[lesson] Using local structured lesson:', localLessonScript.lessonId)
           await playLessonScript(localLessonScript, text)

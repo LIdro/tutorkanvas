@@ -1,4 +1,4 @@
-import type { LessonNode, LessonScene, LessonScript, LessonStep } from '@/types'
+import type { LearnerProfile, LessonNode, LessonScene, LessonScript, LessonStep } from '@/types'
 
 export interface LongDivisionProblem {
   dividend: number
@@ -42,6 +42,13 @@ const DEMO_TALLY_ROW_GAP = 22
 const MAX_CONCRETE_DIVISOR = 5
 const MAX_CONCRETE_QUOTIENT = 8
 const MAX_CONCRETE_SHARE_COUNT = 40
+
+interface LongDivisionTeachingProfile {
+  shouldPreferConcreteDemo: boolean
+  maxConcreteDivisor: number
+  maxConcreteQuotient: number
+  maxConcreteShareCount: number
+}
 
 export function extractLongDivisionProblem(prompt: string): LongDivisionProblem | null {
   const normalized = prompt.trim().toLowerCase()
@@ -93,11 +100,12 @@ export function shouldUseLocalLongDivision(prompt: string): boolean {
   return /\b(divide|division|divided|long division|show|teach|explain|work through|step by step|solve)\b/.test(normalized)
 }
 
-export function buildLongDivisionLessonScript(problem: LongDivisionProblem): LessonScript | null {
+export function buildLongDivisionLessonScript(problem: LongDivisionProblem, profile: LearnerProfile | null = null): LessonScript | null {
   if (!Number.isFinite(problem.dividend) || !Number.isFinite(problem.divisor)) return null
   if (problem.dividend < 0 || problem.divisor <= 0) return null
 
-  const steps = solveLongDivision(problem.dividend, problem.divisor)
+  const teachingProfile = getTeachingProfile(profile)
+  const steps = solveLongDivision(problem.dividend, problem.divisor, teachingProfile)
   if (!steps.length) return null
 
   const scene = buildLongDivisionScene(problem, steps)
@@ -184,7 +192,11 @@ function parseFlexibleInteger(raw: string): number {
   return total + current
 }
 
-function solveLongDivision(dividend: number, divisor: number): LongDivisionStepData[] {
+function solveLongDivision(
+  dividend: number,
+  divisor: number,
+  teachingProfile: LongDivisionTeachingProfile
+): LongDivisionStepData[] {
   const digits = String(dividend).split('')
   const steps: LongDivisionStepData[] = []
   let quotientStarted = false
@@ -217,10 +229,12 @@ function solveLongDivision(dividend: number, divisor: number): LongDivisionStepD
       remainder,
       nextDigit,
       resultDigits: nextDigit !== undefined ? `${remainder}${nextDigit}` : String(remainder),
-      useConcreteDemo:
-        divisor <= MAX_CONCRETE_DIVISOR &&
-        quotientDigit <= MAX_CONCRETE_QUOTIENT &&
-        product <= MAX_CONCRETE_SHARE_COUNT,
+      useConcreteDemo: shouldUseConcreteDemo({
+        divisor,
+        quotientDigit,
+        product,
+        teachingProfile,
+      }),
       concreteShareCount: product,
     })
 
@@ -229,6 +243,69 @@ function solveLongDivision(dividend: number, divisor: number): LongDivisionStepD
   }
 
   return steps
+}
+
+function shouldUseConcreteDemo(input: {
+  divisor: number
+  quotientDigit: number
+  product: number
+  teachingProfile: LongDivisionTeachingProfile
+}): boolean {
+  const { divisor, quotientDigit, product, teachingProfile } = input
+
+  if (!teachingProfile.shouldPreferConcreteDemo) {
+    return (
+      divisor <= MAX_CONCRETE_DIVISOR &&
+      quotientDigit <= MAX_CONCRETE_QUOTIENT &&
+      product <= MAX_CONCRETE_SHARE_COUNT
+    )
+  }
+
+  return (
+    divisor <= teachingProfile.maxConcreteDivisor &&
+    quotientDigit <= teachingProfile.maxConcreteQuotient &&
+    product <= teachingProfile.maxConcreteShareCount
+  )
+}
+
+function getTeachingProfile(profile: LearnerProfile | null): LongDivisionTeachingProfile {
+  if (!profile) {
+    return {
+      shouldPreferConcreteDemo: false,
+      maxConcreteDivisor: MAX_CONCRETE_DIVISOR,
+      maxConcreteQuotient: MAX_CONCRETE_QUOTIENT,
+      maxConcreteShareCount: MAX_CONCRETE_SHARE_COUNT,
+    }
+  }
+
+  const isYoungLearner =
+    (typeof profile.age === 'number' && profile.age <= 7) ||
+    profile.preferredStyle === 'step-by-step'
+
+  if (isYoungLearner) {
+    return {
+      shouldPreferConcreteDemo: true,
+      maxConcreteDivisor: 10,
+      maxConcreteQuotient: 10,
+      maxConcreteShareCount: 60,
+    }
+  }
+
+  if (profile.preferredStyle === 'visual') {
+    return {
+      shouldPreferConcreteDemo: true,
+      maxConcreteDivisor: 7,
+      maxConcreteQuotient: 9,
+      maxConcreteShareCount: 45,
+    }
+  }
+
+  return {
+    shouldPreferConcreteDemo: false,
+    maxConcreteDivisor: MAX_CONCRETE_DIVISOR,
+    maxConcreteQuotient: MAX_CONCRETE_QUOTIENT,
+    maxConcreteShareCount: MAX_CONCRETE_SHARE_COUNT,
+  }
 }
 
 function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisionStepData[]): LessonScene {

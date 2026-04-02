@@ -1,6 +1,6 @@
 import { layoutVerticalAddition, layoutVerticalSubtraction } from '@/lib/layout/arithmetic'
 import { buildLongDivisionLessonScript, extractLongDivisionProblem, shouldUseLocalLongDivision } from '@/lib/long-division'
-import type { LessonScene, LessonScript } from '@/types'
+import type { LearnerProfile, LessonScene, LessonScript } from '@/types'
 
 export interface ArithmeticTeachingProblem {
   left: number
@@ -35,10 +35,10 @@ export function extractArithmeticTeachingProblem(prompt: string): ArithmeticTeac
   return { left, right, operator }
 }
 
-export function buildLessonSceneFromPrompt(prompt: string): LessonScene | null {
+export function buildLessonSceneFromPrompt(prompt: string, profile: LearnerProfile | null = null): LessonScene | null {
   const divisionProblem = extractLongDivisionProblem(prompt)
   if (divisionProblem) {
-    return buildLongDivisionLessonScript(divisionProblem)?.scene ?? null
+    return buildLongDivisionLessonScript(divisionProblem, profile)?.scene ?? null
   }
 
   const problem = extractArithmeticTeachingProblem(prompt)
@@ -67,10 +67,10 @@ export function hydrateLessonScriptScene(script: LessonScript, prompt: string): 
   }
 }
 
-export function buildLocalLessonScript(prompt: string): LessonScript | null {
+export function buildLocalLessonScript(prompt: string, profile: LearnerProfile | null = null): LessonScript | null {
   const divisionProblem = extractLongDivisionProblem(prompt)
   if (divisionProblem) {
-    return buildLongDivisionLessonScript(divisionProblem)
+    return buildLongDivisionLessonScript(divisionProblem, profile)
   }
 
   return null

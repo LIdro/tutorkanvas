@@ -45,8 +45,13 @@ export function useLearnerProfile() {
     if (p) await incrementSessionCount(id)
   }, [])
 
-  const addProfile = useCallback(async (name: string, age?: number, grade?: string) => {
-    const p = await createProfile(name, age, grade)
+  const addProfile = useCallback(async (
+    name: string,
+    age?: number,
+    grade?: string,
+    preferredStyle?: LearnerProfile['preferredStyle']
+  ) => {
+    const p = await createProfile(name, age, grade, preferredStyle)
     await loadProfiles()
     return p
   }, [loadProfiles])
