@@ -5,23 +5,24 @@
 // ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
 import { getProvider } from '@/lib/providers'
-import { buildSystemPrompt } from '@/lib/prompts'
+import { buildLessonPlannerPrompt, buildSystemPrompt } from '@/lib/prompts'
 import type { ProviderConfig, Message, LearnerProfile } from '@/types'
+import { getServerAuthUserId } from '@/lib/dev-auth.server'
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth()
-    if (!userId) {
+    const effectiveUserId = await getServerAuthUserId()
+    if (!effectiveUserId) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
     }
 
     const body = await req.json()
-    const { messages, providerConfig, profile } = body as {
+    const { messages, providerConfig, profile, responseMode } = body as {
       messages: Message[]
       providerConfig: ProviderConfig
       profile?: LearnerProfile
+      responseMode?: 'canvas' | 'lesson_script'
     }
 
     if (!providerConfig?.apiKey && process.env.NEXT_PUBLIC_SERVER_KEY_MODE !== 'true') {
@@ -34,22 +35,29 @@ export async function POST(req: NextRequest) {
       : providerConfig
 
     const provider = getProvider(config)
-    const systemPrompt = buildSystemPrompt(profile ?? null)
+    const systemPrompt = responseMode === 'lesson_script'
+      ? buildLessonPlannerPrompt(profile ?? null)
+      : buildSystemPrompt(profile ?? null)
     const fullMessages: Message[] = [
       { role: 'system', content: systemPrompt },
       ...messages,
     ]
 
-    // Stream response back as text/event-stream
+    // Return a single SSE payload using the provider's non-streaming chat path.
+    // This is more reliable across providers/models than token streaming.
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          for await (const chunk of provider.stream(fullMessages)) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`))
+          const text = await provider.chat(fullMessages)
+          if (!text.trim()) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'AI returned an empty response.' })}\n\n`))
+          } else {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk: text })}\n\n`))
           }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
         } catch (err) {
+          console.error('[api/chat] Provider chat failed:', err)
           const msg = err instanceof Error ? err.message : 'AI error'
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: msg })}\n\n`))
         } finally {
@@ -65,7 +73,8 @@ export async function POST(req: NextRequest) {
         Connection: 'keep-alive',
       },
     })
-  } catch {
+  } catch (err) {
+    console.error('[api/chat] Invalid request:', err)
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
 }

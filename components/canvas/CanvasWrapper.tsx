@@ -156,25 +156,38 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
           if (token !== presentationTokenRef.current) return
           if (!segment.trim()) continue
 
-          await speakWithAutoContinue(options?.speak, segment)
-          if (token !== presentationTokenRef.current) return
-
           clearTransientShapes(editor, commentaryShapeIds)
           commentaryShapeIds = []
 
           const boardStep = analyzeTeachingSegment(segment, zones)
+          const revealTasks: Array<Promise<void>> = []
+
           if (boardStep.commentary) {
-            const commentaryId = createCommentaryShape(editor, boardStep.commentary)
+            const commentaryId = createCommentaryShape(editor, boardStep.commentary, { animate: true })
             commentaryShapeIds.push(commentaryId)
             createdShapeIds.push(commentaryId)
+            revealTasks.push(
+              revealTextShape(editor, commentaryId, boardStep.commentary.text, {
+                layout: boardStep.commentary,
+                durationMs: getRevealDurationMs(boardStep.commentary.text, 700, 1800),
+              })
+            )
           }
 
           for (const workingItem of boardStep.working) {
             const layout = getWorkingLayout(workingItem, zones, aggregateBounds)
             const id = layout.renderAsEquation
               ? await createEquationShape(editor, layout, transientAssetUrlsRef.current)
-              : createChalkTextShape(editor, layout)
+              : createChalkTextShape(editor, layout, { animate: true })
             createdShapeIds.push(id)
+            if (!layout.renderAsEquation) {
+              revealTasks.push(
+                revealTextShape(editor, id, layout.text, {
+                  layout,
+                  durationMs: getRevealDurationMs(layout.text, 900, 2400),
+                })
+              )
+            }
             const shapeBounds = editor.getShapePageBounds(id as any)
             if (!shapeBounds) continue
             aggregateBounds = aggregateBounds ? Box.Common([aggregateBounds, shapeBounds]) : shapeBounds.clone()
@@ -183,6 +196,12 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
           if (aggregateBounds) {
             revealWorkingBounds(editor, aggregateBounds)
           }
+
+          const speechTask = speakWithAutoContinue(options?.speak, segment)
+          await Promise.all([
+            speechTask,
+            Promise.all(revealTasks),
+          ])
 
           await wait(options?.stepPauseMs ?? 1200)
         }
@@ -317,7 +336,11 @@ function clearTransientShapes(editor: Editor, shapeIds: string[]) {
   }
 }
 
-function createChalkTextShape(editor: Editor, layout: ChalkSegmentLayout): string {
+function createChalkTextShape(
+  editor: Editor,
+  layout: ChalkSegmentLayout,
+  options?: { animate?: boolean }
+): string {
   const id = createShapeId(`chalk-${crypto.randomUUID()}`) as unknown as string
   editor.createShape({
     id,
@@ -325,7 +348,7 @@ function createChalkTextShape(editor: Editor, layout: ChalkSegmentLayout): strin
     x: layout.x,
     y: layout.y,
     props: {
-      richText: toRichText(layout.text) as any,
+      richText: toRichText(options?.animate ? getRevealSeedText(layout.text) : layout.text) as any,
       size: layout.size,
       color: 'white',
       font: 'draw',
@@ -399,12 +422,17 @@ function getChalkLayout(text: string, viewportBounds: Box, aggregateBounds: Box 
 }
 
 function getTeachingBoardZones(viewportBounds: Box): TeachingBoardZones {
-  const commentaryWidth = Math.max(240, viewportBounds.width * 0.28)
+  const rightGutter = Math.max(72, viewportBounds.width * 0.08)
+  const commentaryWidth = Math.max(220, viewportBounds.width * 0.24)
   const commentaryHeight = Math.max(140, viewportBounds.height * 0.24)
+  const workspaceWidth = Math.min(
+    viewportBounds.width * 0.58,
+    viewportBounds.width - commentaryWidth - rightGutter - 120
+  )
 
   return {
     commentary: new Box(
-      viewportBounds.maxX - commentaryWidth - 28,
+      viewportBounds.maxX - commentaryWidth - rightGutter,
       viewportBounds.minY + 24,
       commentaryWidth,
       commentaryHeight
@@ -412,7 +440,7 @@ function getTeachingBoardZones(viewportBounds: Box): TeachingBoardZones {
     workspace: new Box(
       viewportBounds.minX + 36,
       viewportBounds.minY + 72,
-      viewportBounds.width * 0.62,
+      Math.max(320, workspaceWidth),
       viewportBounds.height * 1.8
     ),
   }
@@ -509,8 +537,12 @@ function extractDigitStatements(segment: string): string[] {
   return items
 }
 
-function createCommentaryShape(editor: Editor, layout: ChalkSegmentLayout): string {
-  return createChalkTextShape(editor, layout)
+function createCommentaryShape(
+  editor: Editor,
+  layout: ChalkSegmentLayout,
+  options?: { animate?: boolean }
+): string {
+  return createChalkTextShape(editor, layout, options)
 }
 
 function pickChalkPreset(text: string, isMath: boolean): {
@@ -697,6 +729,64 @@ function createUnderline(editor: Editor, x: number, y: number, width: number): s
     },
   } as any)
   return id
+}
+
+async function revealTextShape(
+  editor: Editor,
+  shapeId: string,
+  fullText: string,
+  options: {
+    layout: ChalkSegmentLayout
+    durationMs: number
+  }
+) {
+  const normalizedText = fullText.trim()
+  if (!normalizedText) return
+
+  const steps = Math.max(4, Math.min(18, Math.ceil(normalizedText.length / 8)))
+  const intervalMs = Math.max(45, Math.floor(options.durationMs / steps))
+
+  for (let step = 1; step <= steps; step += 1) {
+    const shape = editor.getShape(shapeId as any)
+    if (!shape) return
+
+    const visibleText = getRevealTextSlice(normalizedText, step / steps)
+    editor.updateShape({
+      id: shapeId,
+      type: 'text',
+      props: {
+        richText: toRichText(visibleText) as any,
+        w: options.layout.width,
+      },
+    } as any)
+
+    if (step < steps) {
+      await wait(intervalMs)
+    }
+  }
+}
+
+function getRevealSeedText(text: string): string {
+  const trimmed = text.trim()
+  if (!trimmed) return ''
+  return getRevealTextSlice(trimmed, 0.12)
+}
+
+function getRevealTextSlice(text: string, progress: number): string {
+  const targetLength = Math.max(1, Math.min(text.length, Math.ceil(text.length * progress)))
+  let slice = text.slice(0, targetLength)
+
+  const lastWhitespace = slice.lastIndexOf(' ')
+  if (targetLength < text.length && lastWhitespace > 0 && targetLength < text.length - 2) {
+    slice = slice.slice(0, lastWhitespace)
+  }
+
+  return slice.trimEnd() || text.slice(0, 1)
+}
+
+function getRevealDurationMs(text: string, minMs: number, maxMs: number): number {
+  const estimated = text.trim().length * 32
+  return Math.max(minMs, Math.min(maxMs, estimated))
 }
 
 function toRichText(plain: string) {

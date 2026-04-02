@@ -5,18 +5,18 @@
 // ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
 import { getProvider } from '@/lib/providers'
 import { buildVisionPrompt } from '@/lib/prompts'
 import type { ProviderConfig, LearnerProfile } from '@/types'
+import { getServerAuthUserId } from '@/lib/dev-auth.server'
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const MAX_BYTES = 10 * 1024 * 1024 // 10 MB
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth()
-    if (!userId) {
+    const effectiveUserId = await getServerAuthUserId()
+    if (!effectiveUserId) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
     }
 
@@ -59,7 +59,8 @@ export async function POST(req: NextRequest) {
 
     // Image is NOT stored — only the structured AI response is returned
     return NextResponse.json(result)
-  } catch {
+  } catch (err) {
+    console.error('[api/vision] Vision request failed:', err)
     return NextResponse.json({ error: 'Could not analyse image. Please try again.' }, { status: 500 })
   }
 }
