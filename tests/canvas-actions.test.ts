@@ -128,14 +128,14 @@ describe('executeCanvasActions', () => {
     expect(call.type).toBe('arrow')
   })
 
-  it('creates a note shape for add_card', () => {
+  it('renders add_card as chalk text on the board', () => {
     const editor = makeEditorMock()
     executeCanvasActions(editor, [
       { type: 'add_card', x: 10, y: 10, content: { type: 'explanation', body: 'This is a hint', title: 'Tip' } },
     ])
     const call = (editor as any).createShape.mock.calls[0][0]
-    expect(call.type).toBe('note')
-    // tldraw v4 uses richText — check all paragraph texts joined
+    expect(call.type).toBe('text')
+    expect(call.props.color).toBe('white')
     const paragraphTexts: string[] = call.props.richText.content
       .flatMap((p: any) => (p.content ?? []).map((n: any) => n.text ?? ''))
     const joined = paragraphTexts.join(' ')

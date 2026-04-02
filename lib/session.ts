@@ -9,18 +9,25 @@ import { getDB, SESSIONS_STORE } from './db'
 import { getStorageUserId } from './storage-user'
 
 const MAX_SESSIONS = 50
+let remoteSessionApiAvailable = true
 
 function getCurrentUserId(): string {
   return getStorageUserId() ?? 'anonymous'
 }
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T | null> {
+  if (!remoteSessionApiAvailable) return null
   try {
     const res = await fetch(input, init)
+    if (res.status === 503) {
+      remoteSessionApiAvailable = false
+      return null
+    }
     if (!res.ok) return null
     if (res.status === 204) return null
     return (await res.json()) as T
   } catch {
+    remoteSessionApiAvailable = false
     return null
   }
 }
@@ -85,12 +92,21 @@ export async function getSessions(): Promise<TKSession[]> {
 }
 
 export async function updateSession(id: string, updates: Partial<TKSession>): Promise<void> {
-  const remote = await fetch(`/api/sessions/${id}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  }).catch(() => null)
-  if (remote?.ok) return
+  if (remoteSessionApiAvailable) {
+    const remote = await fetch(`/api/sessions/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch(() => {
+      remoteSessionApiAvailable = false
+      return null
+    })
+    if (remote?.status === 503) {
+      remoteSessionApiAvailable = false
+    } else if (remote?.ok) {
+      return
+    }
+  }
 
   const db = await getDB()
   const existing = await db.get(SESSIONS_STORE, id)
@@ -111,8 +127,17 @@ export async function appendMessage(sessionId: string, message: { role: 'user' |
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  const remote = await fetch(`/api/sessions/${id}`, { method: 'DELETE' }).catch(() => null)
-  if (remote?.ok) return
+  if (remoteSessionApiAvailable) {
+    const remote = await fetch(`/api/sessions/${id}`, { method: 'DELETE' }).catch(() => {
+      remoteSessionApiAvailable = false
+      return null
+    })
+    if (remote?.status === 503) {
+      remoteSessionApiAvailable = false
+    } else if (remote?.ok) {
+      return
+    }
+  }
 
   const db = await getDB()
   await db.delete(SESSIONS_STORE, id)

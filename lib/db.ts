@@ -7,9 +7,10 @@
 import { openDB, type IDBPDatabase } from 'idb'
 
 export const DB_NAME    = 'tutorkanvas'
-export const DB_VERSION = 3
+export const DB_VERSION = 4
 export const PROFILES_STORE = 'profiles'
 export const SESSIONS_STORE = 'sessions'
+export const AI_LOGS_STORE  = 'ai_logs'
 
 let _db: IDBPDatabase | null = null
 
@@ -46,6 +47,16 @@ export async function getDB(): Promise<IDBPDatabase> {
         }
       }
       void oldVersion // suppress unused-var lint
+
+      // ── ai_logs store ─────────────────────────
+      if (!db.objectStoreNames.contains(AI_LOGS_STORE)) {
+        const store = db.createObjectStore(AI_LOGS_STORE, { keyPath: 'id' })
+        store.createIndex('sessionId',  'sessionId')
+        store.createIndex('profileId',  'profileId')
+        store.createIndex('createdAt',  'createdAt')
+        store.createIndex('isError',    'isError')
+        store.createIndex('responseMode', 'responseMode')
+      }
     },
   })
   return _db

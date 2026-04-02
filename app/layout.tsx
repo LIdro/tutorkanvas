@@ -4,6 +4,15 @@ import { ClerkProvider } from '@clerk/nextjs'
 import ClientAuthSync from '@/components/auth/ClientAuthSync'
 import "./globals.css";
 
+// Server-side bypass flag — evaluated once at startup, never shipped to the
+// client bundle.  When true, ClerkProvider is omitted entirely so that no
+// Clerk network requests are made during local development.
+const DEV_BYPASS =
+  process.env.NODE_ENV !== 'production' &&
+  process.env.DEV_AUTH_BYPASS === 'true'
+
+const ENABLE_SW = process.env.NODE_ENV === 'production'
+
 const nunito = Nunito({
   variable: "--font-nunito",
   subsets: ["latin"],
@@ -50,23 +59,54 @@ export default function RootLayout({
     >
       <head>
         {/* PWA: register service worker */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js').catch(function() {});
-                });
-              }
-            `,
-          }}
-        />
+        {!ENABLE_SW && (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                if ('serviceWorker' in navigator) {
+                  navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                    registrations.forEach(function(registration) {
+                      registration.unregister().catch(function() {});
+                    });
+                  }).catch(function() {});
+                }
+                if ('caches' in window) {
+                  caches.keys().then(function(keys) {
+                    keys
+                      .filter(function(key) { return key.indexOf('tutorkanvas-') === 0; })
+                      .forEach(function(key) { caches.delete(key).catch(function() {}); });
+                  }).catch(function() {});
+                }
+              `,
+            }}
+          />
+        )}
+        {ENABLE_SW && (
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                if ('serviceWorker' in navigator) {
+                  window.addEventListener('load', function() {
+                    navigator.serviceWorker.register('/sw.js').catch(function() {});
+                  });
+                }
+              `,
+            }}
+          />
+        )}
       </head>
       <body className="min-h-full flex flex-col font-nunito bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
-        <ClerkProvider>
-          <ClientAuthSync />
-          {children}
-        </ClerkProvider>
+        {DEV_BYPASS ? (
+          <>
+            <ClientAuthSync />
+            {children}
+          </>
+        ) : (
+          <ClerkProvider>
+            <ClientAuthSync />
+            {children}
+          </ClerkProvider>
+        )}
       </body>
     </html>
   );

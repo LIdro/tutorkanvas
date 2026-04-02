@@ -6,7 +6,7 @@
 //   • Canvas page                     → stale-while-revalidate
 // ─────────────────────────────────────────────
 
-const CACHE_NAME = 'tutorkanvas-v1'
+const CACHE_NAME = 'tutorkanvas-v2'
 
 // Resources to pre-cache on install (app shell)
 const PRECACHE_URLS = [
@@ -53,7 +53,7 @@ self.addEventListener('fetch', (event) => {
 
   // API routes → network only (never cache LLM/voice responses)
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(request))
+    event.respondWith(fetch(request).catch(() => Response.error()))
     return
   }
 
@@ -62,7 +62,15 @@ self.addEventListener('fetch', (event) => {
   // manually offers no benefit, and intercepting them breaks tldraw's
   // font/image pre-loader (causes EncodingError floods in the console).
   if (url.pathname.startsWith('/_next/')) {
-    event.respondWith(fetch(request))
+    event.respondWith(fetch(request).catch(() => Response.error()))
+    return
+  }
+
+  // Images, fonts, manifests, and other asset files should bypass the SW.
+  // Caching HTML responses under these URLs can lead to browser decode
+  // failures and noisy EncodingError / Failed to fetch logs.
+  if (request.destination === 'image' || request.destination === 'font' || request.destination === 'manifest') {
+    event.respondWith(fetch(request).catch(() => Response.error()))
     return
   }
 

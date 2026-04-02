@@ -74,6 +74,17 @@ export default function AIResponseCard({ response, isLoading, onGameComplete, on
   const suggestAction = response.actions.find((a): a is CanvasAction & { type: 'suggest_game' } => a.type === 'suggest_game')
   const addGameAction = response.actions.find((a): a is CanvasAction & { type: 'add_game' } => a.type === 'add_game')
   const gameConfig = addGameAction?.game ?? suggestAction?.game
+  const addCardAction = response.actions.find((a): a is CanvasAction & { type: 'add_card' } => a.type === 'add_card')
+  const addTextAction = response.actions.find((a): a is CanvasAction & { type: 'add_text' } => a.type === 'add_text')
+  const displayText = (
+    speakAction?.text ??
+    response.message ??
+    addCardAction?.content.body ??
+    addTextAction?.content ??
+    ''
+  ).trim()
+
+  if (!displayText && !suggestAction && !addGameAction && !gameResult) return null
 
   function handleGameCorrect(stars: number, correct?: number, total?: number) {
     setGameResult({ stars, correct, total })
@@ -89,7 +100,7 @@ export default function AIResponseCard({ response, isLoading, onGameComplete, on
       {!gameActive && (
         <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-purple-100 dark:border-purple-900/50 overflow-hidden">
           {/* Max avatar + message */}
-          {speakAction && (
+          {displayText && (
             <div className="p-5 flex gap-3 items-start">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-white font-bold shrink-0">
                 M
@@ -97,7 +108,7 @@ export default function AIResponseCard({ response, isLoading, onGameComplete, on
               <div className="flex-1">
                 <p className="text-sm font-semibold text-purple-600 dark:text-purple-400 mb-1">Max says</p>
                 <p className="font-patrick-hand text-gray-800 dark:text-gray-200 text-xl leading-relaxed">
-                  <TypingText text={speakAction.text} />
+                  <TypingText text={displayText} />
                 </p>
               </div>
             </div>

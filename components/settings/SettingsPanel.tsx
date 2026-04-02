@@ -4,8 +4,7 @@
 // PIN-gated slide-out settings drawer.
 // ─────────────────────────────────────────────
 
-import { useState, useEffect } from 'react'
-import { useAuth } from '@clerk/nextjs'
+import { useState, useEffect, useMemo } from 'react'
 import { X, Eye, EyeOff, ExternalLink, Trash2, Plus, Check, ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -13,10 +12,14 @@ import {
   clearProviderConfig, getDeepgramKey, saveDeepgramKey,
   getDeepgramVoice, saveDeepgramVoice, validateApiKey, maskKey,
   clearAllAppData, getVoiceEnabled, saveVoiceEnabled,
+  getNarrationRate, saveNarrationRate,
+  getExplanationStepPauseMs, saveExplanationStepPauseMs,
 } from '@/lib/security'
 import { getFeatureFlags, canUseAI } from '@/lib/feature-flags'
 import { PROVIDERS, getDefaultModel } from '@/lib/providers'
 import { useLearnerProfile } from '@/hooks/useLearnerProfile'
+import { useAuthSafe, getEffectiveUserId, isDevAuthBypassClient } from '@/lib/dev-auth'
+import AILogsViewer from '@/components/settings/AILogsViewer'
 import type { ProviderID } from '@/types'
 
 const DEEPGRAM_VOICES = [
@@ -26,7 +29,7 @@ const DEEPGRAM_VOICES = [
   { id: 'aura-athena-en',  name: 'Athena — British' },
 ]
 
-type Section = 'ai' | 'voice' | 'profiles' | 'data'
+type Section = 'ai' | 'voice' | 'profiles' | 'data' | 'logs'
 
 interface Props {
   open: boolean
@@ -34,11 +37,13 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose }: Props) {
-  const { userId } = useAuth()
+  const { userId: rawUserId } = useAuthSafe()
+  const userId = getEffectiveUserId(rawUserId, isDevAuthBypassClient())
   const { profiles, addProfile, removeProfile } = useLearnerProfile()
 
   // PIN gate
   const [pinUnlocked, setPinUnlocked] = useState(false)
+  const [pinIsSet, setPinIsSet] = useState(false)
   const [pinInput, setPinInput] = useState('')
   const [pinError, setPinError] = useState('')
   const [section, setSection] = useState<Section>('ai')
@@ -50,11 +55,15 @@ export default function SettingsPanel({ open, onClose }: Props) {
   const [model, setModel] = useState('')
   const [keyError, setKeyError] = useState('')
   const [keySaved, setKeySaved] = useState(false)
+  const [providerSearch, setProviderSearch] = useState('')
+  const [modelSearch, setModelSearch] = useState('')
 
   // Voice
   const [dgKey, setDgKey] = useState('')
   const [dgVoice, setDgVoice] = useState('aura-asteria-en')
   const [voiceEnabled, setVoiceEnabledLocal] = useState(true)
+  const [narrationRate, setNarrationRate] = useState(0.9)
+  const [explanationPauseMs, setExplanationPauseMs] = useState(1200)
 
   // New profile
   const [newName, setNewName] = useState('')
@@ -68,6 +77,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
 
   useEffect(() => {
     if (!open) return
+    setPinIsSet(hasPinSet())
     setFlags(getFeatureFlags())
     const cfg = getProviderConfig()
     if (cfg) {
@@ -78,6 +88,8 @@ export default function SettingsPanel({ open, onClose }: Props) {
     if (existingDgKey) setDgKey(existingDgKey)
     setDgVoice(getDeepgramVoice() ?? 'aura-asteria-en')
     setVoiceEnabledLocal(getVoiceEnabled())
+    setNarrationRate(getNarrationRate())
+    setExplanationPauseMs(getExplanationStepPauseMs())
   }, [open])
 
   // Reset unlock state when panel closes
@@ -105,12 +117,27 @@ export default function SettingsPanel({ open, onClose }: Props) {
   }
 
   function handleSaveAI() {
-    if (!validateApiKey(providerId, apiKey)) {
+    const typedKey = apiKey.trim()
+    const existingKey = currentCfg?.apiKey ?? ''
+    const finalKey = typedKey || existingKey
+
+    if (!finalKey) {
+      setKeyError('Enter an API key before saving this provider.')
+      return
+    }
+
+    if (typedKey && !validateApiKey(providerId, typedKey)) {
       setKeyError('That key doesn\'t look right. Please check it.')
       return
     }
+
     const finalModel = model || getDefaultModel(providerId)
-    saveProviderConfig({ id: providerId, name: providerMeta.name, apiKey, model: finalModel })
+    saveProviderConfig({
+      id: providerId,
+      name: providerMeta.name,
+      apiKey: finalKey,
+      model: finalModel,
+    })
     setKeyError('')
     setApiKey('')
     setKeySaved(true)
@@ -130,6 +157,8 @@ export default function SettingsPanel({ open, onClose }: Props) {
       saveDeepgramVoice(dgVoice)
     }
     saveVoiceEnabled(voiceEnabled)
+    saveNarrationRate(narrationRate)
+    saveExplanationStepPauseMs(explanationPauseMs)
     setFlags(getFeatureFlags())
   }
 
@@ -149,18 +178,36 @@ export default function SettingsPanel({ open, onClose }: Props) {
 
   const currentCfg = getProviderConfig()
   const providerMeta = PROVIDERS.find((p) => p.id === providerId)!
+  const visibleProviders = useMemo(() => {
+    const query = providerSearch.trim().toLowerCase()
+    if (!query) return PROVIDERS
+    return PROVIDERS.filter((provider) => {
+      const matchesProvider = provider.name.toLowerCase().includes(query) || provider.id.toLowerCase().includes(query)
+      const matchesModel = provider.models.some((m) =>
+        m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query)
+      )
+      return matchesProvider || matchesModel
+    })
+  }, [providerSearch])
+  const visibleModels = useMemo(() => {
+    const query = modelSearch.trim().toLowerCase()
+    if (!query) return providerMeta.models
+    return providerMeta.models.filter((m) =>
+      m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query)
+    )
+  }, [modelSearch, providerMeta.models])
 
   return (
     <>
       {/* Backdrop */}
       <div
-        className={cn('fixed inset-0 bg-black/40 dark:bg-black/60 z-40 transition-opacity', open ? 'opacity-100' : 'opacity-0 pointer-events-none')}
+        className={cn('fixed inset-0 bg-black/40 dark:bg-black/60 z-[1900] transition-opacity', open ? 'opacity-100' : 'opacity-0 pointer-events-none')}
         onClick={onClose}
       />
 
       {/* Drawer */}
       <aside className={cn(
-        'fixed right-0 top-0 h-full w-full max-w-md bg-white dark:bg-gray-900 z-50 shadow-2xl flex flex-col transition-transform duration-300 border-l border-transparent dark:border-gray-700',
+        'fixed right-0 top-0 h-full w-full max-w-md bg-white dark:bg-gray-900 z-[2000] shadow-2xl flex flex-col transition-transform duration-300 border-l border-transparent dark:border-gray-700',
         open ? 'translate-x-0' : 'translate-x-full'
       )}>
         {/* Header */}
@@ -175,7 +222,7 @@ export default function SettingsPanel({ open, onClose }: Props) {
             <div className="text-center space-y-4 w-full max-w-xs">
               <div className="text-5xl">🔐</div>
               <p className="text-gray-600 dark:text-gray-400">Enter your parent PIN to access settings.</p>
-              {!hasPinSet() && (
+              {!pinIsSet && (
                 <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
                   <ShieldAlert size={16} className="text-amber-500 shrink-0" />
                   <p className="text-xs text-amber-700 dark:text-amber-400">No PIN set yet. Visit <a href="/setup" className="underline">/setup</a> to configure.</p>
@@ -197,14 +244,14 @@ export default function SettingsPanel({ open, onClose }: Props) {
           <>
             {/* Nav tabs */}
             <nav className="flex border-b border-gray-100 dark:border-gray-700 overflow-x-auto">
-              {(['ai', 'voice', 'profiles', 'data'] as Section[]).map((s) => (
+              {(['ai', 'voice', 'profiles', 'data', 'logs'] as Section[]).map((s) => (
                 <button key={s} onClick={() => setSection(s)}
                   className={cn('px-4 py-3 text-sm font-medium capitalize whitespace-nowrap border-b-2 transition-colors',
                     section === s
                       ? 'border-purple-500 text-purple-600 dark:text-purple-400'
                       : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
                   )}>
-                  {s === 'ai' ? '🤖 AI' : s === 'voice' ? '🎤 Voice' : s === 'profiles' ? '👧 Profiles' : '🗑️ Data'}
+                  {s === 'ai' ? '🤖 AI' : s === 'voice' ? '🎤 Voice' : s === 'profiles' ? '👧 Profiles' : s === 'data' ? '🗑️ Data' : '📋 AI Logs'}
                 </button>
               ))}
             </nav>
@@ -220,19 +267,31 @@ export default function SettingsPanel({ open, onClose }: Props) {
                     {currentCfg && <span className="ml-auto font-mono text-xs">{maskKey(currentCfg.apiKey)}</span>}
                   </div>
 
+                  <input
+                    type="text"
+                    value={providerSearch}
+                    onChange={(e) => setProviderSearch(e.target.value)}
+                    placeholder="Search providers or models…"
+                    className="input-field"
+                  />
+
                   <div className="grid grid-cols-2 gap-2">
-                    {PROVIDERS.filter((p) => !p.advanced).map((p) => (
-                      <button key={p.id} onClick={() => { setProviderId(p.id as ProviderID); setModel(getDefaultModel(p.id as ProviderID)) }}
+                    {visibleProviders.map((p) => (
+                      <button key={p.id} onClick={() => { setProviderId(p.id as ProviderID); setModel(getDefaultModel(p.id as ProviderID)); setModelSearch('') }}
                         className={cn('p-2.5 rounded-xl border-2 text-left text-xs transition-all',
                           providerId === p.id
                             ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40'
                             : 'border-gray-200 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-700'
                         )}>
                         <span className="font-semibold block dark:text-gray-200">{p.name}</span>
+                        <span className="block text-[10px] text-gray-500 dark:text-gray-400 mt-1">{p.models.length} models</span>
                         {p.recommended && <span className="text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 px-1 rounded">FREE tier</span>}
                       </button>
                     ))}
                   </div>
+                  {visibleProviders.length === 0 && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400">No providers matched your search.</p>
+                  )}
 
                   <div className="relative">
                     <input
@@ -252,15 +311,47 @@ export default function SettingsPanel({ open, onClose }: Props) {
                     Get a {providerMeta.name} key <ExternalLink size={12} />
                   </a>
 
-                  <select value={model} onChange={(e) => setModel(e.target.value)} className="input-field">
-                    {providerMeta.models.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
+                  <div className="space-y-2 rounded-2xl border border-gray-200 dark:border-gray-700 p-3">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Model</p>
+                    <input
+                      type="text"
+                      value={modelSearch}
+                      onChange={(e) => setModelSearch(e.target.value)}
+                      placeholder={`Search ${providerMeta.name} models…`}
+                      className="input-field"
+                    />
+                    <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl">
+                      {visibleModels.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setModel(m.id)}
+                          className={cn(
+                            'w-full rounded-xl border px-3 py-2 text-left transition-colors',
+                            model === m.id
+                              ? 'border-purple-500 bg-purple-50 dark:border-purple-500 dark:bg-purple-950/40'
+                              : 'border-gray-200 dark:border-gray-700 hover:border-purple-200 dark:hover:border-purple-700'
+                          )}
+                        >
+                          <span className="block text-sm font-medium text-gray-800 dark:text-gray-100">{m.name}</span>
+                          <span className="block text-xs text-gray-500 dark:text-gray-400 font-mono">{m.id}</span>
+                        </button>
+                      ))}
+                      {visibleModels.length === 0 && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">No models matched your search.</p>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder="Or enter a custom model id"
+                      className="input-field"
+                    />
+                  </div>
 
                   <div className="flex gap-2">
-                    <button onClick={handleSaveAI} disabled={!apiKey.trim()} className="btn-primary flex-1">
-                      {keySaved ? <><Check size={14} className="inline mr-1" />Saved!</> : 'Save Key'}
+                    <button onClick={handleSaveAI} className="btn-primary flex-1">
+                      {keySaved ? <><Check size={14} className="inline mr-1" />Saved!</> : 'Save Settings'}
                     </button>
                     {currentCfg && (
                       <button onClick={handleClearAI} className="btn-danger px-4">
@@ -295,6 +386,38 @@ export default function SettingsPanel({ open, onClose }: Props) {
                       {DEEPGRAM_VOICES.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
                     </select>
                   )}
+                  <div className="space-y-3 rounded-2xl border border-gray-200 dark:border-gray-700 p-4">
+                    <label className="block space-y-2">
+                      <div className="flex items-center justify-between gap-4 text-sm text-gray-700 dark:text-gray-300">
+                        <span className="font-medium">Narration speed</span>
+                        <span>{narrationRate.toFixed(2)}x</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.6"
+                        max="1.2"
+                        step="0.05"
+                        value={narrationRate}
+                        onChange={(e) => setNarrationRate(Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </label>
+                    <label className="block space-y-2">
+                      <div className="flex items-center justify-between gap-4 text-sm text-gray-700 dark:text-gray-300">
+                        <span className="font-medium">Pause between explanation steps</span>
+                        <span>{(explanationPauseMs / 1000).toFixed(1)}s</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="300"
+                        max="4000"
+                        step="100"
+                        value={explanationPauseMs}
+                        onChange={(e) => setExplanationPauseMs(Number(e.target.value))}
+                        className="w-full"
+                      />
+                    </label>
+                  </div>
                   <button onClick={handleSaveVoice} className="btn-primary w-full">Save Voice Settings</button>
                 </div>
               )}
@@ -368,6 +491,18 @@ export default function SettingsPanel({ open, onClose }: Props) {
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {/* AI Logs Section */}
+              {section === 'logs' && (
+                <div className="space-y-3">
+                  <div className="bg-purple-50 dark:bg-purple-950/40 rounded-xl p-4 text-sm text-purple-700 dark:text-purple-300 space-y-1 border border-purple-100 dark:border-purple-800/30">
+                    <p className="font-semibold">📋 AI Interaction Logs</p>
+                    <p>Every question sent to the AI is recorded here — including the system prompt, raw response, and parsed artifacts. Use this to review how the AI performed and whether its explanations match the plan.</p>
+                    <p className="text-xs text-purple-500 dark:text-purple-400 mt-1">Images are never stored — only a flag indicating that a photo was attached.</p>
+                  </div>
+                  <AILogsViewer />
                 </div>
               )}
 

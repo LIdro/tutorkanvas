@@ -5,12 +5,12 @@
 // ─────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { getServerAuthUserId } from '@/lib/dev-auth.server'
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId } = await auth()
-    if (!userId) {
+    const effectiveUserId = await getServerAuthUserId()
+    if (!effectiveUserId) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
     }
 

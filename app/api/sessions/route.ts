@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
 import type { TKSession } from '@/types'
 import { isDatabaseConfigured } from '@/lib/server/database'
 import { createSessionRecord, listSessions } from '@/lib/server/sessions-store'
+import { getServerAuthUserId } from '@/lib/dev-auth.server'
 
 export async function GET(req: Request) {
-  const { userId } = await auth()
-  if (!userId) {
+  const effectiveUserId = await getServerAuthUserId()
+  if (!effectiveUserId) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
   if (!isDatabaseConfigured()) {
@@ -15,13 +15,13 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const profileId = searchParams.get('profileId') ?? undefined
-  const sessions = await listSessions(userId, profileId)
+  const sessions = await listSessions(effectiveUserId, profileId)
   return NextResponse.json(sessions)
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth()
-  if (!userId) {
+  const effectiveUserId = await getServerAuthUserId()
+  if (!effectiveUserId) {
     return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 })
   }
   if (!isDatabaseConfigured()) {
@@ -33,6 +33,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid session.' }, { status: 400 })
   }
 
-  const saved = await createSessionRecord({ ...session, userId })
+  const saved = await createSessionRecord({ ...session, userId: effectiveUserId })
   return NextResponse.json(saved, { status: 201 })
 }

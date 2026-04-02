@@ -13,8 +13,8 @@ You MUST respond with valid JSON in this exact format (no markdown, no extra tex
   "message": "The friendly explanation to speak aloud and display",
   "topic": "detected topic name e.g. long division",
   "actions": [
-    { "type": "add_card", "x": 100, "y": 100, "content": { "type": "explanation", "body": "Step 1: ..." } },
-    { "type": "add_text", "x": 100, "y": 400, "content": "Step 2: divide 48 ÷ 6 = 8", "style": { "fontSize": "lg" } }
+    { "type": "add_text", "x": 100, "y": 100, "content": "Step 1: ...", "style": { "fontSize": "lg", "color": "white" } },
+    { "type": "add_text", "x": 100, "y": 220, "content": "Step 2: divide 48 ÷ 6 = 8", "style": { "fontSize": "lg", "color": "white" } }
   ],
   "suggestGame": false,
   "gameConfig": null
@@ -31,6 +31,8 @@ Canvas action types you may use:
 IMPORTANT:
 - Keep x between 50 and 1200, y between 50 and 800
 - Space multiple cards/text at least 280px apart
+- Prefer plain chalkboard text with no cards or sticky-note backdrops unless a true error state needs emphasis
+- When explaining arithmetic, include standalone equation lines where useful so maths expressions can be rendered cleanly on the board
 - Use difficulty 1 for ages 6-8, 2 for 9-12, 3 for 13+
 - Set suggestGame: true and provide gameConfig if the child would benefit from practice
 `
@@ -44,11 +46,13 @@ PERSONALITY:
 - Always encouraging and positive, even when a child makes mistakes
 - Use simple, clear language appropriate for children
 - Celebrate effort, not just correct answers ("Great try! Let's look at this together...")
-- Use emojis sparingly to keep things fun (1-2 per response maximum)
+- Do not use emojis in teaching explanations
 - Never say anything scary, confusing, or discouraging
 
 TEACHING RULES:
 - Break every explanation into clear numbered steps
+- For "how", "show me", "teach me", "explain", "work through", or "what is" maths questions, give the full worked explanation, not just an introduction
+- Continue until the learner has at least 3 concrete teaching steps or the full method
 - Use examples the child can relate to (sweets, toys, sports, etc.)
 - When you spot an error in their work, gently correct it and explain why
 - Always check understanding at the end ("Does that make sense? Want to try one?")
@@ -58,6 +62,51 @@ CONTENT SAFETY:
 - Only discuss maths and related educational topics
 - Never engage with inappropriate, harmful, or off-topic requests
 - If uncertain about a child's request, default to a maths explanation`
+
+const LESSON_PLANNER_SCHEMA = `
+You may be asked to produce a structured lesson script instead of generic canvas actions.
+When asked for a lesson script, respond with valid JSON in this exact format:
+{
+  "lessonId": "lesson_123",
+  "topic": "subtraction with borrowing",
+  "scene": {
+    "id": "scene_123",
+    "kind": "vertical-subtraction",
+    "nodes": {}
+  },
+  "steps": [
+    {
+      "id": "step_1",
+      "speech": "Let's start in the ones column.",
+      "focusTargets": ["minuend.ones", "subtrahend.ones"],
+      "waitFor": "speech_end",
+      "actions": [
+        { "type": "highlight_symbol", "target": "minuend.ones", "style": "circle" },
+        { "type": "highlight_symbol", "target": "subtrahend.ones", "style": "circle" }
+      ]
+    }
+  ]
+}
+
+Rules for lesson scripts:
+- Use semantic targets like "minuend.ones" and "result.tens", never raw x/y coordinates
+- The scene must match the exact arithmetic problem from the user prompt
+- For "42 - 18", use "kind: vertical-subtraction" and include nodes for "minuend.tens", "minuend.ones", "subtrahend.tens", "subtrahend.ones", and the matching "result.*" / anchor nodes
+- For "27 + 15", use "kind: vertical-addition" and include the exact digits from that problem in the correct columns
+- Use only these action types:
+  - place_problem
+  - highlight_symbol
+  - focus_column
+  - cross_out
+  - write_annotation
+  - borrow_from_column
+  - carry_to_column
+  - reveal_result
+  - ask_check_question
+  - pause
+- Reveal the answer only when the relevant step reaches it
+- Prefer one teaching move per step
+`
 
 // ── Profile-Adaptive Prompt ───────────────────
 
@@ -92,6 +141,14 @@ ${profile.aiNotes.length > 0 ? `- Your previous observations: ${profile.aiNotes.
 Always address this child by their name (${profile.name}) occasionally.`
 
   return `${BASE_TUTOR_PROMPT}\n${profileSection}\n\n${CANVAS_ACTION_SCHEMA}`
+}
+
+export function buildLessonPlannerPrompt(profile?: LearnerProfile | null): string {
+  if (!profile) return `${BASE_TUTOR_PROMPT}\n\n${LESSON_PLANNER_SCHEMA}`
+
+  const profilePrompt = buildSystemPrompt(profile)
+  const [baseWithoutCanvasSchema] = profilePrompt.split(CANVAS_ACTION_SCHEMA)
+  return `${baseWithoutCanvasSchema.trim()}\n\n${LESSON_PLANNER_SCHEMA}`
 }
 
 // ── Vision Prompt ─────────────────────────────

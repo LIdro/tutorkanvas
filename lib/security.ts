@@ -17,6 +17,8 @@ const KEYS = {
   parentPinHash:     'tk_parent_pin_hash',
   activeProfileId:   'tk_active_profile_id',
   voiceEnabled:      'tk_voice_enabled',
+  narrationRate:     'tk_narration_rate',
+  explanationPause:  'tk_explanation_pause',
   hasCompletedSetup: 'tk_setup_complete',
 } as const
 
@@ -158,6 +160,32 @@ export function getVoiceEnabled(): boolean {
   return getStoredValue(KEYS.voiceEnabled) !== 'false'
 }
 
+export function saveNarrationRate(rate: number): void {
+  if (!isBrowser()) return
+  const clamped = Math.min(1.2, Math.max(0.6, rate))
+  setStoredValue(KEYS.narrationRate, String(clamped))
+}
+
+export function getNarrationRate(): number {
+  if (!isBrowser()) return 0.9
+  const raw = Number(getStoredValue(KEYS.narrationRate) ?? '0.9')
+  if (Number.isNaN(raw)) return 0.9
+  return Math.min(1.2, Math.max(0.6, raw))
+}
+
+export function saveExplanationStepPauseMs(ms: number): void {
+  if (!isBrowser()) return
+  const clamped = Math.min(4000, Math.max(300, Math.round(ms)))
+  setStoredValue(KEYS.explanationPause, String(clamped))
+}
+
+export function getExplanationStepPauseMs(): number {
+  if (!isBrowser()) return 1200
+  const raw = Number(getStoredValue(KEYS.explanationPause) ?? '1200')
+  if (Number.isNaN(raw)) return 1200
+  return Math.min(4000, Math.max(300, Math.round(raw)))
+}
+
 // ── Setup Completion ──────────────────────────
 
 export function markSetupComplete(): void {
@@ -183,6 +211,8 @@ export function getAppSettings(): AppSettings {
     parentPinHash:     getParentPinHash(),
     activeProfileId:   getActiveProfileId(),
     voiceEnabled:      getVoiceEnabled(),
+    narrationRate:     getNarrationRate(),
+    explanationStepPauseMs: getExplanationStepPauseMs(),
     hasCompletedSetup: hasCompletedSetup(),
   }
 }

@@ -7,6 +7,13 @@
 import type { Editor } from 'tldraw'
 import type { CanvasAction, AICanvasResponse, GameConfig } from '@/types'
 
+let canvasShapeCounter = 0
+
+function nextCanvasShapeId(prefix: string): string {
+  canvasShapeCounter += 1
+  return `shape:canvas-${prefix}-${canvasShapeCounter}`
+}
+
 // ── TLRichText helper ─────────────────────────
 
 /**
@@ -98,8 +105,10 @@ function toTldrawColor(color?: string): TldrawColor {
  * Legacy action types (write_text / draw_shape / highlight / clear) are
  * forwarded to their modern equivalents for backwards compatibility.
  */
-export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): void {
-  if (!editor || !actions.length) return
+export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): string[] {
+  if (!editor || !actions.length) return []
+
+  const createdShapeIds: string[] = []
 
   editor.run(() => {
     for (const action of actions) {
@@ -115,9 +124,11 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
       switch (action.type) {
         // ── add_text ───────────────────────────────────────────────
         case 'add_text': {
+          const id = nextCanvasShapeId('text')
           const size  = (FONT_SIZE_MAP[action.style?.fontSize ?? 'md'] ?? 'm') as TldrawSize
           const color = toTldrawColor(action.style?.color)
           editor.createShape({
+            id,
             type: 'text',
             x: action.x,
             y: action.y,
@@ -131,7 +142,8 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
               w: 300,
               scale: 1,
             },
-          })
+          } as any)
+          createdShapeIds.push(id)
           break
         }
 
@@ -143,7 +155,9 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
           const label = action.props.label ?? ''
 
           if (action.shape === 'arrow') {
+            const id = nextCanvasShapeId('arrow')
             editor.createShape({
+              id,
               type: 'arrow',
               x: action.x,
               y: action.y,
@@ -152,10 +166,13 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
                 start: { x: 0, y: 0 },
                 end:   { x: w, y: 0 },
               } as any,
-            })
+            } as any)
+            createdShapeIds.push(id)
           } else {
+            const id = nextCanvasShapeId('shape')
             const geo = GEO_TYPE_MAP[action.shape] ?? 'rectangle'
             editor.createShape({
+              id,
               type: 'geo',
               x: action.x,
               y: action.y,
@@ -171,37 +188,35 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
                 font:   'draw'   as TldrawFont,
                 align:  'middle' as TldrawAlign,
               } as any,
-            })
+            } as any)
+            createdShapeIds.push(id)
           }
           break
         }
 
-        // ── add_card (note / sticky) ───────────────────────────────
+        // ── add_card rendered as chalk text on the board ──────────
         case 'add_card': {
           const title = action.content.title ? `${action.content.title}\n\n` : ''
           const text  = title + (action.content.body ?? '')
-
-          const cardColors: Record<string, TldrawColor> = {
-            explanation: 'yellow',
-            hint:        'light-blue',
-            summary:     'light-green',
-            error:       'light-red',
-          }
-          const color = cardColors[action.content.type] ?? 'yellow'
-
+          const id = nextCanvasShapeId('card-text')
+          const color = action.content.type === 'error' ? 'light-red' : 'white'
           editor.createShape({
-            type: 'note',
+            id,
+            type: 'text',
             x: action.x,
             y: action.y,
             props: {
               richText: toRichText(text) as any,
-              color,
-              size:   'm'      as TldrawSize,
+              color: color as TldrawColor,
+              size:   'l'      as TldrawSize,
               font:   'draw'   as TldrawFont,
-              align:  'start'  as TldrawAlign,
-              fontSizeAdjustment: 0,
+              textAlign: 'start' as TldrawAlign,
+              autoSize: true,
+              w: 560,
+              scale: 1,
             } as any,
-          })
+          } as any)
+          createdShapeIds.push(id)
           break
         }
 
@@ -215,7 +230,9 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
         default: {
           if (type === 'write_text') {
             const l = action as unknown as { x: number; y: number; text: string }
+            const id = nextCanvasShapeId('legacy-text')
             editor.createShape({
+              id,
               type: 'text',
               x: l.x ?? 100,
               y: l.y ?? 100,
@@ -229,10 +246,13 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
                 w: 300,
                 scale: 1,
               },
-            })
+            } as any)
+            createdShapeIds.push(id)
           } else if (type === 'draw_shape') {
             const l = action as unknown as { x: number; y: number; shape?: string; width?: number; height?: number }
+            const id = nextCanvasShapeId('legacy-shape')
             editor.createShape({
+              id,
               type: 'geo',
               x: l.x ?? 100,
               y: l.y ?? 100,
@@ -245,10 +265,13 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
                 dash:  'draw'  as TldrawDash,
                 size:  'm'     as TldrawSize,
               } as any,
-            })
+            } as any)
+            createdShapeIds.push(id)
           } else if (type === 'highlight') {
             const l = action as unknown as { x: number; y: number; width?: number; height?: number; color?: string }
+            const id = nextCanvasShapeId('legacy-highlight')
             editor.createShape({
+              id,
               type: 'geo',
               x: l.x ?? 100,
               y: l.y ?? 100,
@@ -261,12 +284,15 @@ export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): v
                 dash:  'draw'  as TldrawDash,
                 size:  'm'     as TldrawSize,
               } as any,
-            })
+            } as any)
+            createdShapeIds.push(id)
           }
         }
       }
     }
   })
+
+  return createdShapeIds
 }
 
 
@@ -284,6 +310,22 @@ export function parseAIResponse(raw: string): AICanvasResponse {
 
   try {
     const parsed = JSON.parse(jsonStr)
+    if (typeof parsed?.error === 'string' && parsed.error.trim()) {
+      return {
+        message: parsed.error,
+        actions: [
+          {
+            type: 'add_card',
+            x: 100,
+            y: 100,
+            content: {
+              type: 'error',
+              body: parsed.error,
+            },
+          },
+        ],
+      }
+    }
     return {
       message:     parsed.message     ?? '',
       actions:     validateActions(parsed.actions ?? []),

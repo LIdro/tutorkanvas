@@ -55,7 +55,7 @@ export default function SessionPicker({ open, onClose, onResume }: Props) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-[2000] flex justify-end">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
