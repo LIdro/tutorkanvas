@@ -377,7 +377,9 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
     const productDigits = String(step.product).split('')
     const remainderDigits = String(step.remainder).split('')
     const stepWidth = (step.endIndex - step.startIndex + 1) * COLUMN_SPACING
-    const demoLayout = step.useConcreteDemo ? getConcreteDemoLayout(problem.divisor, step.quotientDigit, baseY) : null
+    const demoLayout = step.useConcreteDemo
+      ? getConcreteDemoLayout(problem.divisor, step.quotientDigit, baseY, step.useRapidConcreteDemo)
+      : null
 
     for (const [digitIndex, digit] of productDigits.entries()) {
       const visualIndex = step.endIndex - productDigits.length + 1 + digitIndex
@@ -454,22 +456,37 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
           value: '',
         }
 
-        for (let slotIndex = 0; slotIndex < tallySlots; slotIndex += 1) {
-          const columnOffset = (slotIndex % demoLayout.tallyColumns) * demoLayout.tallyColumnGap
-          const rowIndex = Math.floor(slotIndex / demoLayout.tallyColumns)
-          nodes[`step.${step.index}.group.${groupIndex}.slot.${slotIndex}`] = createTextNode(
-            `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`,
-            'demo_group_tally',
-            groupX + demoLayout.tallyStartX + columnOffset,
-            groupY + demoLayout.groupSize + 14 + rowIndex * demoLayout.tallyRowGap,
-            ''
-          )
+        if (step.useRapidConcreteDemo) {
+          const chunks = formatRapidShareChunks(tallySlots)
+          for (const [chunkIndex, chunk] of chunks.entries()) {
+            nodes[`step.${step.index}.group.${groupIndex}.chunk.${chunkIndex}`] = {
+              id: `step.${step.index}.group.${groupIndex}.chunk.${chunkIndex}`,
+              role: 'demo_group_tally_chunk',
+              x: groupX - 4,
+              y: groupY + demoLayout.groupSize + 10 + chunkIndex * demoLayout.chunkRowGap,
+              width: demoLayout.groupSize + 16,
+              height: 20,
+              value: '',
+            }
+          }
+        } else {
+          for (let slotIndex = 0; slotIndex < tallySlots; slotIndex += 1) {
+            const columnOffset = (slotIndex % demoLayout.tallyColumns) * demoLayout.tallyColumnGap
+            const rowIndex = Math.floor(slotIndex / demoLayout.tallyColumns)
+            nodes[`step.${step.index}.group.${groupIndex}.slot.${slotIndex}`] = createTextNode(
+              `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`,
+              'demo_group_tally',
+              groupX + demoLayout.tallyStartX + columnOffset,
+              groupY + demoLayout.groupSize + 14 + rowIndex * demoLayout.tallyRowGap,
+              ''
+            )
+          }
         }
       }
     }
   }
 
-  const summaryAnswerY = nextBaseY + 18
+  const summaryAnswerY = nextBaseY + 8
   const summaryAnswerText = problem.dividend % problem.divisor === 0
     ? `${problem.dividend} ÷ ${problem.divisor} = ${Math.floor(problem.dividend / problem.divisor)}`
     : `${problem.dividend} ÷ ${problem.divisor} = ${Math.floor(problem.dividend / problem.divisor)} r ${problem.dividend % problem.divisor}`
@@ -536,7 +553,7 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
           id: `step_${step.index}_share_fast`,
           teacherNote: 'Share equally',
           speech: `If we share ${step.concreteShareCount} equally by ${problem.divisor}, as we can do here in this working, then each group gets ${step.quotientDigit}.`,
-          actions: buildConcreteRevealActions(step.index, problem.divisor, step.quotientDigit),
+          actions: buildRapidConcreteRevealActions(step.index, problem.divisor, step.quotientDigit),
           waitFor: 'speech_end',
         })
       } else {
@@ -626,7 +643,7 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
       : `So ${problem.dividend} divided by ${problem.divisor} equals ${Math.floor(problem.dividend / problem.divisor)} remainder ${remainder}.`,
     actions: [
       { type: 'reveal_result', target: 'summary.answer', text: getSummaryAnswerText(problem) },
-      { type: 'highlight_symbol', target: 'summary.answer', style: 'circle', color: 'yellow' },
+      { type: 'highlight_symbol', target: 'summary.answer', style: 'glow', color: 'yellow' },
     ],
     waitFor: 'speech_end',
   })
@@ -665,21 +682,45 @@ function buildConcreteRevealActions(stepIndex: number, divisor: number, quotient
   return actions
 }
 
-function getStepHeight(divisor: number, step: LongDivisionStepData): number {
-  if (!step.useConcreteDemo) return STEP_HEIGHT
-  return Math.max(STEP_HEIGHT, getConcreteDemoLayout(divisor, step.quotientDigit, 0).panelHeight + 36)
+function buildRapidConcreteRevealActions(stepIndex: number, divisor: number, quotientDigit: number) {
+  const actions: LessonStep['actions'] = []
+  const chunks = formatRapidShareChunks(quotientDigit)
+
+  for (let groupIndex = 0; groupIndex < divisor; groupIndex += 1) {
+    for (const [chunkIndex, chunk] of chunks.entries()) {
+      actions.push({
+        type: 'reveal_result',
+        target: `step.${stepIndex}.group.${groupIndex}.chunk.${chunkIndex}`,
+        text: chunk,
+      })
+    }
+  }
+
+  return actions
 }
 
-function getConcreteDemoLayout(divisor: number, quotientDigit: number, baseY: number) {
-  const groupColumns = Math.min(3, Math.max(1, divisor))
+function getStepHeight(divisor: number, step: LongDivisionStepData): number {
+  if (!step.useConcreteDemo) return STEP_HEIGHT
+  return Math.max(STEP_HEIGHT, getConcreteDemoLayout(divisor, step.quotientDigit, 0, step.useRapidConcreteDemo).panelHeight + 28)
+}
+
+function getConcreteDemoLayout(divisor: number, quotientDigit: number, baseY: number, rapidMode: boolean) {
+  const groupColumns = rapidMode
+    ? Math.min(5, Math.max(1, divisor))
+    : Math.min(3, Math.max(1, divisor))
   const groupRows = Math.ceil(divisor / groupColumns)
   const cellWidth = Math.floor(DEMO_PANEL_WIDTH / groupColumns)
-  const tallyColumns = quotientDigit >= 8 ? 3 : quotientDigit >= 4 ? 2 : 1
-  const tallyRows = Math.max(1, Math.ceil(Math.max(1, quotientDigit) / tallyColumns))
-  const groupSize = Math.max(28, Math.min(46, cellWidth - 28))
+  const tallyColumns = rapidMode ? 1 : quotientDigit >= 8 ? 3 : quotientDigit >= 4 ? 2 : 1
+  const tallyRows = rapidMode ? Math.min(2, formatRapidShareChunks(Math.max(1, quotientDigit)).length) : Math.max(1, Math.ceil(Math.max(1, quotientDigit) / tallyColumns))
+  const groupSize = rapidMode
+    ? Math.max(24, Math.min(34, cellWidth - 12))
+    : Math.max(28, Math.min(46, cellWidth - 28))
   const tallyColumnGap = tallyColumns === 1 ? 0 : Math.max(12, Math.floor(groupSize / 3))
-  const tallyRowGap = quotientDigit >= 8 ? 18 : quotientDigit >= 5 ? 20 : 24
-  const rowHeight = groupSize + 22 + tallyRows * tallyRowGap + 10
+  const tallyRowGap = rapidMode ? 14 : quotientDigit >= 8 ? 18 : quotientDigit >= 5 ? 20 : 24
+  const chunkRowGap = 16
+  const rowHeight = rapidMode
+    ? groupSize + 14 + tallyRows * chunkRowGap + 8
+    : groupSize + 22 + tallyRows * tallyRowGap + 10
 
   return {
     panelX: DEMO_PANEL_X,
@@ -694,7 +735,24 @@ function getConcreteDemoLayout(divisor: number, quotientDigit: number, baseY: nu
     tallyRowGap,
     tallyStartX: Math.floor(groupSize / 2) - Math.floor((tallyColumns - 1) * tallyColumnGap / 2) - 2,
     rowHeight,
+    chunkRowGap,
   }
+}
+
+function formatRapidShareChunks(count: number) {
+  if (count <= 5) return ['|'.repeat(count)]
+  const groupsOfFive = Math.floor(count / 5)
+  const remainder = count % 5
+  const lines: string[] = []
+
+  if (groupsOfFive > 0) {
+    lines.push(Array.from({ length: groupsOfFive }, () => '|||||').join(' '))
+  }
+  if (remainder > 0) {
+    lines.push('|'.repeat(remainder))
+  }
+
+  return lines
 }
 
 function getSummaryAnswerText(problem: LongDivisionProblem) {
