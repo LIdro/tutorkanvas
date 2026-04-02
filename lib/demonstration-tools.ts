@@ -21,7 +21,14 @@ function toRichText(plain: string) {
   }
 }
 
-function createTextShape(editor: Editor, x: number, y: number, text: string, color: string = 'white') {
+function createTextShape(
+  editor: Editor,
+  x: number,
+  y: number,
+  text: string,
+  color: string = 'white',
+  width: number = 240
+) {
   const id = nextShapeId('text')
   editor.createShape({
     id,
@@ -35,7 +42,7 @@ function createTextShape(editor: Editor, x: number, y: number, text: string, col
       font: 'draw',
       textAlign: 'start',
       autoSize: true,
-      w: 240,
+      w: width,
       scale: 1,
     },
   } as any)
@@ -67,6 +74,34 @@ function createEllipse(editor: Editor, x: number, y: number, width: number, heig
     y,
     props: {
       geo: 'ellipse',
+      w: width,
+      h: height,
+      color,
+      fill,
+      dash: 'draw',
+      size: 'm',
+    },
+  } as any)
+  return id
+}
+
+function createRectangle(
+  editor: Editor,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  color: string = 'white',
+  fill: 'none' | 'semi' = 'none'
+) {
+  const id = nextShapeId('rect')
+  editor.createShape({
+    id,
+    type: 'geo',
+    x,
+    y,
+    props: {
+      geo: 'rectangle',
       w: width,
       h: height,
       color,
@@ -114,10 +149,29 @@ export function placeLineAtNode(editor: Editor, scene: LessonScene, nodeId: stri
   return createLine(editor, node.x, node.y, node.width, node.height, color)
 }
 
-export function placeTextAtNode(editor: Editor, scene: LessonScene, nodeId: string, text: string): string | null {
+export function placeRectangleAtNode(
+  editor: Editor,
+  scene: LessonScene,
+  nodeId: string,
+  color: string = 'white',
+  fill: 'none' | 'semi' = 'none'
+): string | null {
   const node = getNode(scene, nodeId)
   if (!node) return null
-  return createTextShape(editor, node.x, node.y, text)
+  return createRectangle(editor, node.x, node.y, node.width, node.height, color, fill)
+}
+
+export function placeTextAtNode(
+  editor: Editor,
+  scene: LessonScene,
+  nodeId: string,
+  text: string,
+  color?: string
+): string | null {
+  const node = getNode(scene, nodeId)
+  if (!node) return null
+  const resolvedColor = color ?? (typeof node.meta?.color === 'string' ? node.meta.color : 'white')
+  return createTextShape(editor, node.x, node.y, text, resolvedColor, node.width)
 }
 
 export function circleNode(editor: Editor, scene: LessonScene, nodeId: string, color: string = 'blue'): string | null {
@@ -195,13 +249,14 @@ export function rewriteNodeValue(
   scene: LessonScene,
   nodeId: string,
   text: string,
-  color: string = 'white'
+  color?: string
 ): { shapeIds: string[]; scene: LessonScene } | null {
   const node = getNode(scene, nodeId)
   if (!node) return null
 
+  const resolvedColor = color ?? (typeof node.meta?.color === 'string' ? node.meta.color : 'white')
   const shapeIds = crossOutNode(editor, scene, nodeId, 'red')
-  shapeIds.push(createTextShape(editor, node.x, node.y, text, color))
+  shapeIds.push(createTextShape(editor, node.x, node.y, text, resolvedColor, node.width))
   return {
     shapeIds,
     scene: updateNodeValue(scene, nodeId, text),

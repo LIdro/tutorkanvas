@@ -49,6 +49,13 @@ describe('long division planner', () => {
     expect(script?.steps.some((step) => step.speech.includes('left over'))).toBe(true)
   })
 
+  it('uses the concrete sharing path by default for school-age single-digit divisors', () => {
+    const script = buildLongDivisionLessonScript({ dividend: 45, divisor: 5 })
+
+    expect(script?.scene.nodes['step.0.group.0.circle']).toBeDefined()
+    expect(script?.steps.some((step) => step.id.includes('share_fast'))).toBe(true)
+  })
+
   it('uses the concrete sharing path for younger learners on larger simple division steps', () => {
     const youngLearner: LearnerProfile = {
       id: 'profile-young',
@@ -95,6 +102,14 @@ describe('long division planner', () => {
 
     expect(script?.scene.nodes['step.0.group.6.circle']).toBeDefined()
     expect(script?.steps.some((step) => step.id.includes('share_'))).toBe(true)
+  })
+
+  it('explains when the first digit is too small and reveals a prominent final answer', () => {
+    const script = buildLongDivisionLessonScript({ dividend: 45, divisor: 7 })
+
+    expect(script?.steps.some((step) => step.id.includes('check_first_digit'))).toBe(true)
+    expect(script?.scene.nodes['summary.answer']).toBeDefined()
+    expect(script?.steps.find((step) => step.id === 'summary')?.actions.some((action) => action.type === 'highlight_symbol')).toBe(true)
   })
 })
 

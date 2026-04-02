@@ -18,6 +18,7 @@ import {
   glowNode,
   placeEllipseAtNode,
   placeLineAtNode,
+  placeRectangleAtNode,
   performBorrow,
   performCarry,
   placeTextAtNode,
@@ -295,6 +296,12 @@ function renderLessonScene(editor: Editor, scene: LessonScene): LessonScene {
 
       if (node.role === 'demo_group_circle') {
         const shapeId = placeEllipseAtNode(editor, scene, node.id, 'light-blue')
+        nextNodes[node.id] = { ...node, shapeId: shapeId ?? undefined }
+        continue
+      }
+
+      if (node.role === 'demo_panel_border') {
+        const shapeId = placeRectangleAtNode(editor, scene, node.id, 'light-blue')
         nextNodes[node.id] = { ...node, shapeId: shapeId ?? undefined }
         continue
       }
@@ -818,7 +825,8 @@ function executeDemonstrationAction(editor: Editor, scene: LessonScene, action: 
         node.role === 'division_bracket_top' ||
         node.role === 'division_bracket_vertical'
       ) {
-        placeLineAtNode(editor, scene, action.target, 'white')
+        const lineColor = typeof node.meta?.color === 'string' ? node.meta.color : 'white'
+        placeLineAtNode(editor, scene, action.target, lineColor)
         return updateNodeValue(scene, action.target, action.text)
       }
       if (node.value) {

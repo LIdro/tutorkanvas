@@ -18,6 +18,7 @@ interface LongDivisionStepData {
   resultDigits: string
   useConcreteDemo: boolean
   concreteShareCount: number
+  useRapidConcreteDemo: boolean
 }
 
 const DIGIT_WIDTH = 38
@@ -33,12 +34,9 @@ const DIVIDEND_Y = ORIGIN_Y + 8
 const QUOTIENT_Y = ORIGIN_Y - 58
 const STEP_START_Y = ORIGIN_Y + 86
 const STEP_HEIGHT = 124
-const DEMO_ORIGIN_X = 80
+const DEMO_PANEL_X = 48
+const DEMO_PANEL_WIDTH = BRACKET_X - DEMO_PANEL_X - 28
 const DEMO_GROUP_Y_OFFSET = 6
-const DEMO_GROUP_SIZE = 48
-const DEMO_GROUP_SPACING = 82
-const DEMO_TALLY_COLUMN_GAP = 18
-const DEMO_TALLY_ROW_GAP = 30
 const MAX_CONCRETE_DIVISOR = 5
 const MAX_CONCRETE_QUOTIENT = 8
 const MAX_CONCRETE_SHARE_COUNT = 40
@@ -237,6 +235,7 @@ function solveLongDivision(
         teachingProfile,
       }),
       concreteShareCount: product,
+      useRapidConcreteDemo: product >= 20 || quotientDigit >= 7,
     })
 
     quotientStarted = true
@@ -276,11 +275,11 @@ function shouldUseConcreteDemo(input: {
 function getTeachingProfile(profile: LearnerProfile | null): LongDivisionTeachingProfile {
   if (!profile) {
     return {
-      shouldPreferConcreteDemo: false,
+      shouldPreferConcreteDemo: true,
       forceConcreteDemo: false,
-      maxConcreteDivisor: MAX_CONCRETE_DIVISOR,
-      maxConcreteQuotient: MAX_CONCRETE_QUOTIENT,
-      maxConcreteShareCount: MAX_CONCRETE_SHARE_COUNT,
+      maxConcreteDivisor: 9,
+      maxConcreteQuotient: 10,
+      maxConcreteShareCount: 60,
     }
   }
 
@@ -321,7 +320,15 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
   const nodes: Record<string, LessonNode> = {}
   const dividendDigits = String(problem.dividend).split('')
   const quotientDigits = String(Math.floor(problem.dividend / problem.divisor)).split('')
-  const bracketHeight = STEP_START_Y + steps.length * STEP_HEIGHT - ORIGIN_Y + 14
+  const stepBaseYs: number[] = []
+  let nextBaseY = STEP_START_Y
+
+  for (const step of steps) {
+    stepBaseYs[step.index] = nextBaseY
+    nextBaseY += getStepHeight(problem.divisor, step)
+  }
+
+  const bracketHeight = nextBaseY - ORIGIN_Y + 14
 
   nodes.divisor = createTextNode('divisor', 'divisor', DIVISOR_X, DIVISOR_Y, String(problem.divisor))
   nodes['bracket.top'] = createLineNode(
@@ -366,10 +373,11 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
   }
 
   for (const step of steps) {
-    const baseY = STEP_START_Y + step.index * STEP_HEIGHT
+    const baseY = stepBaseYs[step.index]
     const productDigits = String(step.product).split('')
     const remainderDigits = String(step.remainder).split('')
     const stepWidth = (step.endIndex - step.startIndex + 1) * COLUMN_SPACING
+    const demoLayout = step.useConcreteDemo ? getConcreteDemoLayout(problem.divisor, step.quotientDigit, baseY) : null
 
     for (const [digitIndex, digit] of productDigits.entries()) {
       const visualIndex = step.endIndex - productDigits.length + 1 + digitIndex
@@ -402,7 +410,10 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
         baseY + 46,
         ''
       )
-      nodes[`step.${step.index}.remainder.${digitIndex}`].meta = { targetValue: digit }
+      nodes[`step.${step.index}.remainder.${digitIndex}`].meta = {
+        targetValue: digit,
+        color: step.remainder > 0 ? 'yellow' : 'white',
+      }
     }
 
     if (step.nextDigit !== undefined) {
@@ -416,33 +427,61 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
       nodes[`step.${step.index}.bringDown`].meta = { targetValue: step.nextDigit }
     }
 
-    if (step.useConcreteDemo) {
+    if (step.useConcreteDemo && demoLayout) {
+      nodes[`step.${step.index}.panel`] = createLineNode(
+        `step.${step.index}.panel`,
+        'demo_panel_border',
+        DEMO_PANEL_X,
+        demoLayout.panelY,
+        DEMO_PANEL_WIDTH,
+        demoLayout.panelHeight,
+        ''
+      )
+
       const tallySlots = Math.max(1, step.quotientDigit)
       for (let groupIndex = 0; groupIndex < problem.divisor; groupIndex += 1) {
-        const groupX = DEMO_ORIGIN_X + groupIndex * DEMO_GROUP_SPACING
+        const groupColumn = groupIndex % demoLayout.groupColumns
+        const groupRow = Math.floor(groupIndex / demoLayout.groupColumns)
+        const groupX = demoLayout.panelX + groupColumn * demoLayout.cellWidth + demoLayout.groupInsetX
+        const groupY = demoLayout.panelY + 14 + groupRow * demoLayout.rowHeight + DEMO_GROUP_Y_OFFSET
         nodes[`step.${step.index}.group.${groupIndex}.circle`] = {
           id: `step.${step.index}.group.${groupIndex}.circle`,
           role: 'demo_group_circle',
           x: groupX,
-          y: baseY + DEMO_GROUP_Y_OFFSET,
-          width: DEMO_GROUP_SIZE,
-          height: DEMO_GROUP_SIZE,
+          y: groupY,
+          width: demoLayout.groupSize,
+          height: demoLayout.groupSize,
           value: '',
         }
 
         for (let slotIndex = 0; slotIndex < tallySlots; slotIndex += 1) {
-          const columnOffset = slotIndex % 2 === 0 ? 0 : DEMO_TALLY_COLUMN_GAP
-          const rowIndex = Math.floor(slotIndex / 2)
+          const columnOffset = (slotIndex % demoLayout.tallyColumns) * demoLayout.tallyColumnGap
+          const rowIndex = Math.floor(slotIndex / demoLayout.tallyColumns)
           nodes[`step.${step.index}.group.${groupIndex}.slot.${slotIndex}`] = createTextNode(
             `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`,
             'demo_group_tally',
-            groupX + 9 + columnOffset,
-            baseY + 68 + rowIndex * DEMO_TALLY_ROW_GAP,
+            groupX + demoLayout.tallyStartX + columnOffset,
+            groupY + demoLayout.groupSize + 14 + rowIndex * demoLayout.tallyRowGap,
             ''
           )
         }
       }
     }
+  }
+
+  const summaryAnswerY = nextBaseY + 18
+  const summaryAnswerText = problem.dividend % problem.divisor === 0
+    ? `${problem.dividend} ÷ ${problem.divisor} = ${Math.floor(problem.dividend / problem.divisor)}`
+    : `${problem.dividend} ÷ ${problem.divisor} = ${Math.floor(problem.dividend / problem.divisor)} r ${problem.dividend % problem.divisor}`
+  nodes['summary.answer'] = {
+    id: 'summary.answer',
+    role: 'final_answer_text',
+    x: BRACKET_X + 22,
+    y: summaryAnswerY,
+    width: 280,
+    height: DIGIT_HEIGHT,
+    value: '',
+    meta: { targetValue: summaryAnswerText, color: 'yellow' },
   }
 
   return {
@@ -469,6 +508,17 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
   for (const step of steps) {
     const quotientNodeId = `quotient.${Math.max(0, step.endIndex - quotientStartIndex)}`
     const quotientText = quotientDigits[Math.max(0, step.endIndex - quotientStartIndex)] ?? String(step.quotientDigit)
+    const firstDigit = String(problem.dividend)[0]
+
+    if (step.index === 0 && step.startIndex < step.endIndex) {
+      lessonSteps.push({
+        id: `step_${step.index}_check_first_digit`,
+        teacherNote: 'Check first digit',
+        speech: `${firstDigit} is smaller than ${problem.divisor}, so we cannot divide yet. We take the next digit and make ${step.partialDividend}.`,
+        actions: [],
+        waitFor: 'speech_end',
+      })
+    }
 
     if (step.useConcreteDemo) {
       lessonSteps.push({
@@ -481,18 +531,28 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
         waitFor: 'speech_end',
       })
 
-      for (let count = 0; count < step.concreteShareCount; count += 1) {
-        const groupIndex = count % problem.divisor
-        const slotIndex = Math.floor(count / problem.divisor)
+      if (step.useRapidConcreteDemo) {
         lessonSteps.push({
-          id: `step_${step.index}_share_${count}`,
+          id: `step_${step.index}_share_fast`,
           teacherNote: 'Share equally',
-          speech: `${countWord(count + 1)}.`,
-          actions: [
-            { type: 'reveal_result', target: `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`, text: '|' },
-          ],
+          speech: `If we share ${step.concreteShareCount} equally by ${problem.divisor}, as we can do here in this working, then each group gets ${step.quotientDigit}.`,
+          actions: buildConcreteRevealActions(step.index, problem.divisor, step.quotientDigit),
           waitFor: 'speech_end',
         })
+      } else {
+        for (let count = 0; count < step.concreteShareCount; count += 1) {
+          const groupIndex = count % problem.divisor
+          const slotIndex = Math.floor(count / problem.divisor)
+          lessonSteps.push({
+            id: `step_${step.index}_share_${count}`,
+            teacherNote: 'Share equally',
+            speech: `${countWord(count + 1)}.`,
+            actions: [
+              { type: 'reveal_result', target: `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`, text: '|' },
+            ],
+            waitFor: 'speech_end',
+          })
+        }
       }
 
       lessonSteps.push({
@@ -510,7 +570,7 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
       lessonSteps.push({
         id: `step_${step.index}_divide`,
         teacherNote: 'Divide',
-        speech: `How many times does ${problem.divisor} go into ${step.partialDividend}? It goes ${step.quotientDigit} times.`,
+        speech: `Now we ask how many times ${problem.divisor} can go into ${step.partialDividend}. It goes ${step.quotientDigit} times.`,
         actions: [
           { type: 'reveal_result', target: quotientNodeId, text: quotientText },
         ],
@@ -529,10 +589,15 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
     lessonSteps.push({
       id: `step_${step.index}_subtract`,
       teacherNote: 'Subtract',
-      speech: `${step.partialDividend} minus ${step.product} is ${step.remainder}.`,
+      speech: step.remainder === 0
+        ? `${step.partialDividend} minus ${step.product} is ${step.remainder}.`
+        : `${step.partialDividend} minus ${step.product} is ${step.remainder}. This remainder is important, so we keep it for the next part.`,
       actions: [
         { type: 'reveal_result', target: `step.${step.index}.line`, text: 'show' },
         ...getDigitRevealActions(`step.${step.index}.remainder`, String(step.remainder)),
+        ...(step.remainder > 0
+          ? getHighlightActions(`step.${step.index}.remainder`, String(step.remainder), 'yellow')
+          : []),
       ],
       waitFor: 'speech_end',
     })
@@ -541,7 +606,9 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
       lessonSteps.push({
         id: `step_${step.index}_bring_down`,
         teacherNote: 'Bring down',
-        speech: `Bring down the next digit, ${step.nextDigit}, to make ${step.resultDigits}.`,
+        speech: step.remainder > 0
+          ? `We keep that remainder ${step.remainder}, then bring down the next digit, ${step.nextDigit}, to make ${step.resultDigits}.`
+          : `Bring down the next digit, ${step.nextDigit}, to make ${step.resultDigits}.`,
         actions: [
           { type: 'reveal_result', target: `step.${step.index}.bringDown`, text: step.nextDigit },
         ],
@@ -557,7 +624,10 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
     speech: remainder === 0
       ? `So ${problem.dividend} divided by ${problem.divisor} equals ${Math.floor(problem.dividend / problem.divisor)} exactly.`
       : `So ${problem.dividend} divided by ${problem.divisor} equals ${Math.floor(problem.dividend / problem.divisor)} remainder ${remainder}.`,
-    actions: [],
+    actions: [
+      { type: 'reveal_result', target: 'summary.answer', text: getSummaryAnswerText(problem) },
+      { type: 'highlight_symbol', target: 'summary.answer', style: 'circle', color: 'yellow' },
+    ],
     waitFor: 'speech_end',
   })
 
@@ -570,6 +640,69 @@ function getDigitRevealActions(prefix: string, value: string) {
     target: `${prefix}.${index}`,
     text: digit,
   }))
+}
+
+function getHighlightActions(prefix: string, value: string, color: string) {
+  return value.split('').map((_, index) => ({
+    type: 'highlight_symbol' as const,
+    target: `${prefix}.${index}`,
+    style: 'glow' as const,
+    color,
+  }))
+}
+
+function buildConcreteRevealActions(stepIndex: number, divisor: number, quotientDigit: number) {
+  const actions: LessonStep['actions'] = []
+  for (let groupIndex = 0; groupIndex < divisor; groupIndex += 1) {
+    for (let slotIndex = 0; slotIndex < quotientDigit; slotIndex += 1) {
+      actions.push({
+        type: 'reveal_result',
+        target: `step.${stepIndex}.group.${groupIndex}.slot.${slotIndex}`,
+        text: '|',
+      })
+    }
+  }
+  return actions
+}
+
+function getStepHeight(divisor: number, step: LongDivisionStepData): number {
+  if (!step.useConcreteDemo) return STEP_HEIGHT
+  return Math.max(STEP_HEIGHT, getConcreteDemoLayout(divisor, step.quotientDigit, 0).panelHeight + 36)
+}
+
+function getConcreteDemoLayout(divisor: number, quotientDigit: number, baseY: number) {
+  const groupColumns = Math.min(3, Math.max(1, divisor))
+  const groupRows = Math.ceil(divisor / groupColumns)
+  const cellWidth = Math.floor(DEMO_PANEL_WIDTH / groupColumns)
+  const tallyColumns = quotientDigit >= 8 ? 3 : quotientDigit >= 4 ? 2 : 1
+  const tallyRows = Math.max(1, Math.ceil(Math.max(1, quotientDigit) / tallyColumns))
+  const groupSize = Math.max(28, Math.min(46, cellWidth - 28))
+  const tallyColumnGap = tallyColumns === 1 ? 0 : Math.max(12, Math.floor(groupSize / 3))
+  const tallyRowGap = quotientDigit >= 8 ? 18 : quotientDigit >= 5 ? 20 : 24
+  const rowHeight = groupSize + 22 + tallyRows * tallyRowGap + 10
+
+  return {
+    panelX: DEMO_PANEL_X,
+    panelY: baseY - 12,
+    panelHeight: groupRows * rowHeight + 10,
+    groupColumns,
+    cellWidth,
+    groupSize,
+    groupInsetX: Math.floor((cellWidth - groupSize) / 2),
+    tallyColumns,
+    tallyColumnGap,
+    tallyRowGap,
+    tallyStartX: Math.floor(groupSize / 2) - Math.floor((tallyColumns - 1) * tallyColumnGap / 2) - 2,
+    rowHeight,
+  }
+}
+
+function getSummaryAnswerText(problem: LongDivisionProblem) {
+  const quotient = Math.floor(problem.dividend / problem.divisor)
+  const remainder = problem.dividend % problem.divisor
+  return remainder === 0
+    ? `${problem.dividend} ÷ ${problem.divisor} = ${quotient}`
+    : `${problem.dividend} ÷ ${problem.divisor} = ${quotient} r ${remainder}`
 }
 
 function createTextNode(id: string, role: string, x: number, y: number, value: string): LessonNode {
