@@ -173,6 +173,23 @@ export default function CanvasPage() {
         const localLessonScript = buildLocalLessonScript(text, activeProfile ?? null)
         if (localLessonScript) {
           console.info('[lesson] Using local structured lesson:', localLessonScript.lessonId)
+          const cfg0 = getProviderConfig()
+          void logInteraction({
+            sessionId: session?.id ?? null,
+            profileId: activeProfile?.id ?? null,
+            provider: cfg0?.id ?? 'local',
+            model: cfg0?.model ?? 'local',
+            responseMode: 'lesson_script',
+            systemPrompt: '(local built-in lesson — no LLM call)',
+            inputMessages: [{ role: 'user', content: text }],
+            rawResponse: JSON.stringify(localLessonScript),
+            parsedActions: null,
+            parsedLessonScript: localLessonScript,
+            topic: localLessonScript.topic ?? null,
+            latencyMs: Date.now() - t0,
+            isError: false,
+            hadImage: false,
+          })
           await playLessonScript(localLessonScript, text)
           return
         }

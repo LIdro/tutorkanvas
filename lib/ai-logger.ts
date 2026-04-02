@@ -86,8 +86,11 @@ export async function logInteraction(input: LogInteractionInput): Promise<string
     const db = await getDB()
     await db.put(AI_LOGS_STORE, entry)
     await enforceLogLimit()
-  } catch {
-    // Logging must never throw — silently ignore storage failures
+    console.debug(`[ai-logger] Logged ${entry.responseMode} interaction ${id} (${entry.latencyMs}ms)`)
+  } catch (err) {
+    // Logging must never throw — but surface failures to the console so they
+    // are visible during development/QA without breaking the app.
+    console.warn('[ai-logger] Failed to write log entry:', err)
   }
 
   return id
