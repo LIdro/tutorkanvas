@@ -78,6 +78,16 @@ describe('long division planner', () => {
 
     expect(script?.scene.nodes['step.0.group.0.circle']).toBeDefined()
     expect(script?.steps.some((step) => step.id.includes('share_fast'))).toBe(true)
+    expect(script?.steps.find((step) => step.id.includes('share_fast'))?.actions).toContainEqual({
+      type: 'reveal_result',
+      target: 'step.0.group.0.chunk.0',
+      text: '|||||',
+    })
+    expect(script?.steps.find((step) => step.id.includes('share_fast'))?.actions).toContainEqual({
+      type: 'reveal_result',
+      target: 'step.0.group.0.chunk.1',
+      text: '||||',
+    })
   })
 
   it('uses the concrete sharing path for younger learners on larger simple division steps', () => {

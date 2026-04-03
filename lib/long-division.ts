@@ -737,7 +737,7 @@ function formatRapidShareChunks(count: number) {
   const lines: string[] = []
 
   if (groupsOfFive > 0) {
-    lines.push(Array.from({ length: groupsOfFive }, () => '||||').join(' '))
+    lines.push(Array.from({ length: groupsOfFive }, () => '|||||').join(' '))
   }
   if (remainder > 0) {
     lines.push('|'.repeat(remainder))
