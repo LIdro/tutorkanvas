@@ -45,7 +45,7 @@ function makeEngineMock() {
   }
 
   const engine: Partial<CanvasEngine> = {
-    kind: 'tldraw',
+    kind: 'excalidraw',
     getSnapshot: vi.fn(() => null),
     loadSnapshot: vi.fn(),
     clearScene: vi.fn(),

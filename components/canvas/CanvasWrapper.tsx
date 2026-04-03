@@ -1,17 +1,14 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { debounce } from '@/lib/utils'
-import { exportCanvasPng, playChalkTalk, playLessonScript, runCanvasActions } from '@/lib/canvas-runtime'
-import { normalizeCanvasSnapshot } from '@/lib/canvas-engine/snapshots'
-import { ExcalidrawCanvasEngine } from '@/lib/canvas-engine/excalidraw-adapter'
-import { TldrawCanvasEngine } from '@/lib/canvas-engine/tldraw-adapter'
-import type { CanvasEngine } from '@/lib/canvas-engine/types'
-import type { CanvasAction, CanvasEngineKind, LessonScript, LessonStep } from '@/types'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
-import { Tldraw, type Editor } from 'tldraw'
-import 'tldraw/tldraw.css'
 import '@excalidraw/excalidraw/index.css'
+import { exportCanvasPng, playChalkTalk, playLessonScript, runCanvasActions } from '@/lib/canvas-runtime'
+import { ExcalidrawCanvasEngine } from '@/lib/canvas-engine/excalidraw-adapter'
+import { isUnsupportedLegacySnapshot, normalizeCanvasSnapshot } from '@/lib/canvas-engine/snapshots'
+import type { CanvasEngine } from '@/lib/canvas-engine/types'
+import type { CanvasAction, LessonScript, LessonStep } from '@/types'
+import { debounce } from '@/lib/utils'
 
 const Excalidraw = dynamic(
   () => import('@excalidraw/excalidraw').then((mod) => mod.Excalidraw),
@@ -21,7 +18,6 @@ const Excalidraw = dynamic(
 interface CanvasWrapperProps {
   sessionId?: string
   initialSnapshot?: unknown
-  engine?: CanvasEngineKind
   onEditorReady?: (engine: CanvasEngine) => void
   onCanvasChange?: (snapshot: object) => void
 }
@@ -49,12 +45,12 @@ export interface CanvasWrapperRef {
 }
 
 const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
-  ({ sessionId, initialSnapshot, engine = 'tldraw', onEditorReady, onCanvasChange }, ref) => {
+  ({ sessionId, initialSnapshot, onEditorReady, onCanvasChange }, ref) => {
     const engineRef = useRef<CanvasEngine | null>(null)
     const transientIdsRef = useRef<string[]>([])
-    const mountedSnapshotRef = useRef(false)
     const [prefersDark, setPrefersDark] = useState(true)
     const [activeEngine, setActiveEngine] = useState<CanvasEngine | null>(null)
+    const [loadError, setLoadError] = useState<string | null>(null)
 
     useEffect(() => {
       if (typeof window === 'undefined') return
@@ -72,15 +68,26 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
       }
     }, 2000), [onCanvasChange])
 
+    const normalizedSnapshot = useMemo(
+      () => normalizeCanvasSnapshot(initialSnapshot, 'excalidraw'),
+      [initialSnapshot]
+    )
+
     const attachEngine = useCallback((nextEngine: CanvasEngine) => {
       engineRef.current = nextEngine
       setActiveEngine(nextEngine)
-      if (!mountedSnapshotRef.current && initialSnapshot) {
-        nextEngine.loadSnapshot(initialSnapshot)
-        mountedSnapshotRef.current = true
+      setLoadError(null)
+
+      if (initialSnapshot) {
+        if (isUnsupportedLegacySnapshot(initialSnapshot)) {
+          setLoadError('This session contains an unsupported legacy canvas snapshot and cannot be restored automatically.')
+        } else if (normalizedSnapshot) {
+          nextEngine.loadSnapshot(normalizedSnapshot)
+        }
       }
+
       onEditorReady?.(nextEngine)
-    }, [initialSnapshot, onEditorReady, save])
+    }, [initialSnapshot, normalizedSnapshot, onEditorReady])
 
     useEffect(() => {
       if (!activeEngine?.onChange) return
@@ -120,46 +127,45 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
         const currentEngine = engineRef.current
         if (!currentEngine) return
         transientIdsRef.current = []
+        setLoadError(null)
         currentEngine.clearScene()
       },
     }), [sessionId])
 
-    const normalizedSnapshot = useMemo(() => normalizeCanvasSnapshot(initialSnapshot, engine), [initialSnapshot, engine])
-
     return (
       <div className="absolute inset-0">
-        {engine === 'excalidraw' ? (
-          <Excalidraw
-            theme={prefersDark ? 'dark' : 'light'}
-            initialData={(normalizedSnapshot?.engine === 'excalidraw'
-              ? (normalizedSnapshot.scene as { elements?: unknown[]; appState?: object })
-              : undefined) as any}
-            excalidrawAPI={(api) => {
-              if (!api) return
-              void import('@excalidraw/excalidraw').then((mod) => {
+        <Excalidraw
+          theme={prefersDark ? 'dark' : 'light'}
+          initialData={(normalizedSnapshot?.engine === 'excalidraw'
+            ? (normalizedSnapshot.scene as { elements?: unknown[]; appState?: object })
+            : undefined) as any}
+          excalidrawAPI={(api) => {
+            if (!api) return
+            void import('@excalidraw/excalidraw')
+              .then((mod) => {
                 attachEngine(new ExcalidrawCanvasEngine(api as any, {
                   convertToExcalidrawElements: mod.convertToExcalidrawElements as any,
                   exportToBlob: mod.exportToBlob as any,
                 }))
               })
-            }}
-            UIOptions={{
-              canvasActions: {
-                loadScene: false,
-                saveAsImage: false,
-              },
-            }}
-          />
-        ) : (
-          <Tldraw
-            hideUi
-            onMount={(editor) => {
-              const nextEngine = new TldrawCanvasEngine(editor as Editor)
-              attachEngine(nextEngine)
-              editor.setCurrentTool('draw')
-              editor.user.updateUserPreferences({ colorScheme: prefersDark ? 'dark' : 'light' })
-            }}
-          />
+              .catch((error) => {
+                console.error('[canvas] Failed to load Excalidraw runtime', error)
+                setLoadError('Excalidraw failed to initialize. Check the browser console and deployment logs.')
+              })
+          }}
+          UIOptions={{
+            canvasActions: {
+              loadScene: false,
+              saveAsImage: false,
+            },
+          }}
+        />
+
+        {loadError && (
+          <div className="pointer-events-none absolute inset-x-6 top-6 z-40 rounded-2xl border border-red-400/70 bg-[#301414]/95 px-4 py-3 text-white shadow-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-red-300">Canvas Error</p>
+            <p className="mt-2 text-sm leading-relaxed">{loadError}</p>
+          </div>
         )}
       </div>
     )

@@ -57,10 +57,9 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Next.js build chunks and tldraw static assets → network only.
+  // Next.js build chunks → network only.
   // These are content-addressed (hashed filenames) so caching them
-  // manually offers no benefit, and intercepting them breaks tldraw's
-  // font/image pre-loader (causes EncodingError floods in the console).
+  // manually offers no benefit.
   if (url.pathname.startsWith('/_next/')) {
     event.respondWith(fetch(request).catch(() => Response.error()))
     return

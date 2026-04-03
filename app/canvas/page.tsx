@@ -30,7 +30,6 @@ import { createSession, appendMessage, saveCanvasState } from '@/lib/session'
 import { getEffectiveUserId, isDevAuthBypassClient, useAuthSafe } from '@/lib/dev-auth'
 import { logInteraction } from '@/lib/ai-logger'
 import { buildSystemPrompt, buildLessonPlannerPrompt, buildVisionPrompt } from '@/lib/prompts'
-import { getCanvasSnapshotEngine } from '@/lib/canvas-engine/snapshots'
 import type { AICanvasResponse, LessonScript, TKSession } from '@/types'
 
 const CHAT_REQUEST_TIMEOUT_MS = 45000
@@ -123,7 +122,6 @@ export default function CanvasPage() {
   const [hasChanges, setHasChanges] = useState(false)
   const [teacherNote, setTeacherNote] = useState<string | null>(null)
   const shouldHideCanvasOverlays = settingsOpen || profilePickerOpen || sessionPickerOpen
-  const activeCanvasEngine = getCanvasSnapshotEngine(session?.canvasState) ?? (flags.flags.excalidrawCanvas ? 'excalidraw' : 'tldraw')
 
   useEffect(() => {
     document.body.classList.toggle('tk-hide-canvas-overlays', shouldHideCanvasOverlays)
@@ -542,9 +540,8 @@ export default function CanvasPage() {
       {/* Canvas fills the screen below toolbar */}
       <div className="pt-14 h-full">
         <CanvasWrapper
-          key={`${activeCanvasEngine}:${session?.id ?? 'new'}`}
+          key={session?.id ?? 'new'}
           ref={canvasRef}
-          engine={activeCanvasEngine}
           sessionId={session?.id}
           initialSnapshot={session?.canvasState ?? null}
           onCanvasChange={handleCanvasChange}

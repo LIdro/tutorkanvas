@@ -166,7 +166,7 @@ export interface LessonScript {
 
 // ── Canvas Engine / Persistence ──────────────
 
-export type CanvasEngineKind = 'tldraw' | 'excalidraw'
+export type CanvasEngineKind = 'excalidraw'
 
 export interface CanvasRuntimeMetadata {
   semanticNodeId?: string
@@ -184,7 +184,7 @@ export interface CanvasSnapshotEnvelope {
   session?: Record<string, unknown> | null
   metadata?: Record<string, unknown> | null
   legacy?: {
-    sourceEngine: CanvasEngineKind
+    sourceEngine: string
     originalSnapshot: unknown
   } | null
 }
@@ -236,7 +236,6 @@ export interface FeatureFlags {
   aiCanvasWrite: boolean
   aiGames: boolean
   serverKeyMode: boolean
-  excalidrawCanvas: boolean
 }
 
 // ── AI Interaction Logging ────────────────────

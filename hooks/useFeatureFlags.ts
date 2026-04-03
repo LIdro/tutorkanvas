@@ -19,7 +19,6 @@ export function useFeatureFlags() {
     aiCanvasWrite: false,
     aiGames: false,
     serverKeyMode: false,
-    excalidrawCanvas: false,
   })
 
   const refresh = useCallback(() => {

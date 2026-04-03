@@ -23,25 +23,25 @@ export function isCanvasSnapshotEnvelope(value: unknown): value is CanvasSnapsho
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<CanvasSnapshotEnvelope>
   return candidate.version === 1 &&
-    (candidate.engine === 'tldraw' || candidate.engine === 'excalidraw') &&
+    candidate.engine === 'excalidraw' &&
     'scene' in candidate
 }
 
 export function normalizeCanvasSnapshot(snapshot: unknown, defaultEngine: CanvasEngineKind): CanvasSnapshotEnvelope | null {
   if (!snapshot) return null
   if (isCanvasSnapshotEnvelope(snapshot)) return snapshot
-  return createCanvasSnapshotEnvelope({
-    engine: defaultEngine,
-    scene: snapshot,
-    legacy: {
-      sourceEngine: defaultEngine,
-      originalSnapshot: snapshot,
-    },
-  })
+  return null
 }
 
 export function getCanvasSnapshotEngine(snapshot: unknown): CanvasEngineKind | null {
   if (!snapshot) return null
   if (isCanvasSnapshotEnvelope(snapshot)) return snapshot.engine
-  return 'tldraw'
+  return null
+}
+
+export function isUnsupportedLegacySnapshot(snapshot: unknown): boolean {
+  if (!snapshot || typeof snapshot !== 'object') return false
+  if (isCanvasSnapshotEnvelope(snapshot)) return false
+  const candidate = snapshot as { document?: unknown }
+  return typeof candidate.document === 'object' && candidate.document !== null
 }

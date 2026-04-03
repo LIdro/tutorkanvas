@@ -36,7 +36,6 @@ export function getFeatureFlags(): FeatureFlags {
     aiCanvasWrite:       llmAvailable,
     aiGames:             llmAvailable,
     serverKeyMode,
-    excalidrawCanvas:    process.env.NEXT_PUBLIC_CANVAS_ENGINE === 'excalidraw',
   }
 }
 
@@ -66,7 +65,6 @@ export function featureUnavailableReason(feature: keyof FeatureFlags): string {
     aiCanvasWrite:      'Add an AI provider key in Settings to enable AI canvas writing.',
     aiGames:            'Add an AI provider key in Settings to enable AI games.',
     serverKeyMode:      '',
-    excalidrawCanvas:   '',
   }
   return reasons[feature] ?? 'This feature is not available.'
 }
