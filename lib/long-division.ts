@@ -473,11 +473,13 @@ function buildLongDivisionScene(problem: LongDivisionProblem, steps: LongDivisio
           for (let slotIndex = 0; slotIndex < tallySlots; slotIndex += 1) {
             const columnOffset = (slotIndex % demoLayout.tallyColumns) * demoLayout.tallyColumnGap
             const rowIndex = Math.floor(slotIndex / demoLayout.tallyColumns)
-            nodes[`step.${step.index}.group.${groupIndex}.slot.${slotIndex}`] = createTextNode(
+            nodes[`step.${step.index}.group.${groupIndex}.slot.${slotIndex}`] = createLineNode(
               `step.${step.index}.group.${groupIndex}.slot.${slotIndex}`,
-              'demo_group_tally',
+              'demo_group_tally_stroke',
               groupX + demoLayout.tallyStartX + columnOffset,
               groupY + demoLayout.groupSize + 14 + rowIndex * demoLayout.tallyRowGap,
+              0,
+              demoLayout.tallyStrokeHeight,
               ''
             )
           }
@@ -704,7 +706,8 @@ function getConcreteDemoLayout(divisor: number, quotientDigit: number, baseY: nu
     ? Math.max(24, Math.min(34, cellWidth - 12))
     : Math.max(28, Math.min(46, cellWidth - 28))
   const tallyColumnGap = tallyColumns === 1 ? 0 : Math.max(12, Math.floor(groupSize / 3))
-  const tallyRowGap = rapidMode ? 18 : quotientDigit >= 8 ? 18 : quotientDigit >= 5 ? 20 : 24
+  const tallyStrokeHeight = rapidMode ? 0 : 22
+  const tallyRowGap = rapidMode ? 18 : Math.max(28, tallyStrokeHeight + 8)
   const chunkRowGap = 22
   const rowHeight = rapidMode
     ? groupSize + 18 + tallyRows * chunkRowGap + 14
@@ -720,6 +723,7 @@ function getConcreteDemoLayout(divisor: number, quotientDigit: number, baseY: nu
     groupInsetX: Math.floor((cellWidth - groupSize) / 2),
     tallyColumns,
     tallyColumnGap,
+    tallyStrokeHeight,
     tallyRowGap,
     tallyStartX: Math.floor(groupSize / 2) - Math.floor((tallyColumns - 1) * tallyColumnGap / 2) - 2,
     rowHeight,

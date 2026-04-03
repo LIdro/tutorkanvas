@@ -823,7 +823,8 @@ function executeDemonstrationAction(editor: Editor, scene: LessonScene, action: 
       if (
         node.role === 'division_step_line' ||
         node.role === 'division_bracket_top' ||
-        node.role === 'division_bracket_vertical'
+        node.role === 'division_bracket_vertical' ||
+        node.role === 'demo_group_tally_stroke'
       ) {
         const lineColor = typeof node.meta?.color === 'string' ? node.meta.color : 'white'
         placeLineAtNode(editor, scene, action.target, lineColor)
