@@ -17,6 +17,10 @@ const Excalidraw = dynamic(
 
 const DEFAULT_CHALK_STROKE = '#f8fafc'
 const DEFAULT_CANVAS_BACKGROUND = '#12160f'
+const DEFAULT_ACTIVE_TOOL = {
+  type: 'freedraw',
+  locked: false,
+} as const
 
 interface CanvasWrapperProps {
   sessionId?: string
@@ -54,6 +58,7 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
     const [prefersDark, setPrefersDark] = useState(true)
     const [activeEngine, setActiveEngine] = useState<CanvasEngine | null>(null)
     const [loadError, setLoadError] = useState<string | null>(null)
+    const [excalidrawApi, setExcalidrawApi] = useState<any>(null)
 
     useEffect(() => {
       if (typeof window === 'undefined') return
@@ -99,6 +104,46 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
         save()
       })
     }, [activeEngine, onCanvasChange, save])
+
+    useEffect(() => {
+      if (!excalidrawApi || engineRef.current) return
+
+      let cancelled = false
+
+      void import('@excalidraw/excalidraw')
+        .then((mod) => {
+          if (cancelled) return
+
+          attachEngine(new ExcalidrawCanvasEngine(excalidrawApi as any, {
+            convertToExcalidrawElements: mod.convertToExcalidrawElements as any,
+            exportToBlob: mod.exportToBlob as any,
+          }))
+
+          excalidrawApi.updateScene({
+            appState: {
+              ...excalidrawApi.getAppState(),
+              activeTool: DEFAULT_ACTIVE_TOOL,
+              currentItemStrokeColor: DEFAULT_CHALK_STROKE,
+              currentItemBackgroundColor: 'transparent',
+              viewBackgroundColor: DEFAULT_CANVAS_BACKGROUND,
+              currentItemFillStyle: 'solid',
+              currentItemRoughness: 0,
+              currentItemStrokeWidth: 2,
+            },
+            captureUpdate: 'NEVER',
+          })
+          excalidrawApi.setActiveTool(DEFAULT_ACTIVE_TOOL)
+        })
+        .catch((error) => {
+          if (cancelled) return
+          console.error('[canvas] Failed to load Excalidraw runtime', error)
+          setLoadError('Excalidraw failed to initialize. Check the browser console and deployment logs.')
+        })
+
+      return () => {
+        cancelled = true
+      }
+    }, [attachEngine, excalidrawApi])
 
     useImperativeHandle(ref, () => ({
       getSnapshot: () => engineRef.current?.getSnapshot() ?? null,
@@ -148,6 +193,7 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
               elements: restored?.elements ?? [],
               appState: {
                 ...(restored?.appState ?? {}),
+                activeTool: DEFAULT_ACTIVE_TOOL,
                 currentItemStrokeColor: DEFAULT_CHALK_STROKE,
                 currentItemBackgroundColor: 'transparent',
                 viewBackgroundColor: DEFAULT_CANVAS_BACKGROUND,
@@ -159,33 +205,7 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
           })() as any}
           excalidrawAPI={(api) => {
             if (!api) return
-            void import('@excalidraw/excalidraw')
-              .then((mod) => {
-                attachEngine(new ExcalidrawCanvasEngine(api as any, {
-                  convertToExcalidrawElements: mod.convertToExcalidrawElements as any,
-                  exportToBlob: mod.exportToBlob as any,
-                }))
-                api.updateScene({
-                  appState: {
-                    ...api.getAppState(),
-                    currentItemStrokeColor: DEFAULT_CHALK_STROKE,
-                    currentItemBackgroundColor: 'transparent',
-                    viewBackgroundColor: DEFAULT_CANVAS_BACKGROUND,
-                    currentItemFillStyle: 'solid',
-                    currentItemRoughness: 0,
-                    currentItemStrokeWidth: 2,
-                  },
-                  captureUpdate: 'NEVER',
-                })
-                api.setActiveTool({
-                  type: 'freedraw',
-                  locked: false,
-                })
-              })
-              .catch((error) => {
-                console.error('[canvas] Failed to load Excalidraw runtime', error)
-                setLoadError('Excalidraw failed to initialize. Check the browser console and deployment logs.')
-              })
+            setExcalidrawApi(api)
           }}
           UIOptions={{
             canvasActions: {
