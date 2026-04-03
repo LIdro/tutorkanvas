@@ -164,6 +164,31 @@ export interface LessonScript {
   steps: LessonStep[]
 }
 
+// ── Canvas Engine / Persistence ──────────────
+
+export type CanvasEngineKind = 'tldraw' | 'excalidraw'
+
+export interface CanvasRuntimeMetadata {
+  semanticNodeId?: string
+  runtimeRole?: string
+  transient?: boolean
+  programmaticSource?: 'lesson' | 'chalk' | 'ai' | 'system'
+  tags?: string[]
+}
+
+export interface CanvasSnapshotEnvelope {
+  version: 1
+  engine: CanvasEngineKind
+  scene: unknown
+  files?: Record<string, unknown> | null
+  session?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null
+  legacy?: {
+    sourceEngine: CanvasEngineKind
+    originalSnapshot: unknown
+  } | null
+}
+
 // ── Learner Profile ───────────────────────────
 
 export type ExplanationStyle = 'visual' | 'step-by-step' | 'story' | 'auto'
@@ -194,7 +219,7 @@ export interface TKSession {
   name: string
   createdAt: string
   updatedAt: string
-  canvasState: unknown          // tldraw snapshot
+  canvasState: CanvasSnapshotEnvelope | unknown
   messages: Message[]           // conversation history
   topicsCovered: string[]
 }
@@ -211,6 +236,7 @@ export interface FeatureFlags {
   aiCanvasWrite: boolean
   aiGames: boolean
   serverKeyMode: boolean
+  excalidrawCanvas: boolean
 }
 
 // ── AI Interaction Logging ────────────────────

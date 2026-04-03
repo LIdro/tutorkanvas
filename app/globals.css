@@ -95,10 +95,13 @@ body {
   overflow-y: auto;
 }
 
-body.tk-hide-tldraw-overlays .tlui-style-panel__wrapper,
-body.tk-hide-tldraw-overlays .tlui-helper-buttons,
-body.tk-hide-tldraw-overlays .tlui-zoom-menu,
-body.tk-hide-tldraw-overlays .tlui-menu-zone {
+body.tk-hide-canvas-overlays .tlui-style-panel__wrapper,
+body.tk-hide-canvas-overlays .tlui-helper-buttons,
+body.tk-hide-canvas-overlays .tlui-zoom-menu,
+body.tk-hide-canvas-overlays .tlui-menu-zone,
+body.tk-hide-canvas-overlays .Island,
+body.tk-hide-canvas-overlays .App-toolbar,
+body.tk-hide-canvas-overlays .layer-ui__wrapper {
   display: none !important;
 }
 

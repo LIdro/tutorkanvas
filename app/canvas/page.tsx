@@ -30,6 +30,7 @@ import { createSession, appendMessage, saveCanvasState } from '@/lib/session'
 import { getEffectiveUserId, isDevAuthBypassClient, useAuthSafe } from '@/lib/dev-auth'
 import { logInteraction } from '@/lib/ai-logger'
 import { buildSystemPrompt, buildLessonPlannerPrompt, buildVisionPrompt } from '@/lib/prompts'
+import { getCanvasSnapshotEngine } from '@/lib/canvas-engine/snapshots'
 import type { AICanvasResponse, LessonScript, TKSession } from '@/types'
 
 const CHAT_REQUEST_TIMEOUT_MS = 45000
@@ -122,11 +123,12 @@ export default function CanvasPage() {
   const [hasChanges, setHasChanges] = useState(false)
   const [teacherNote, setTeacherNote] = useState<string | null>(null)
   const shouldHideCanvasOverlays = settingsOpen || profilePickerOpen || sessionPickerOpen
+  const activeCanvasEngine = getCanvasSnapshotEngine(session?.canvasState) ?? (flags.flags.excalidrawCanvas ? 'excalidraw' : 'tldraw')
 
   useEffect(() => {
-    document.body.classList.toggle('tk-hide-tldraw-overlays', shouldHideCanvasOverlays)
+    document.body.classList.toggle('tk-hide-canvas-overlays', shouldHideCanvasOverlays)
     return () => {
-      document.body.classList.remove('tk-hide-tldraw-overlays')
+      document.body.classList.remove('tk-hide-canvas-overlays')
     }
   }, [shouldHideCanvasOverlays])
 
@@ -497,21 +499,17 @@ export default function CanvasPage() {
     )
     setSession(s)
     setHasChanges(false)
-    window.location.reload() // easiest way to reset tldraw editor
+    canvasRef.current?.clear()
   }
 
   async function handleExportPng() {
-    const png = await canvasRef.current?.exportPng()
-    if (!png) return
-    const a = document.createElement('a')
-    a.href = png
-    a.download = `tutorkanvas-${Date.now()}.png`
-    a.click()
+    await canvasRef.current?.exportPng()
   }
 
   function handleClearCanvas() {
     if (!confirm('Clear the canvas? This cannot be undone.')) return
-    window.location.reload()
+    canvasRef.current?.clear()
+    setHasChanges(true)
   }
 
   const handleCanvasChange = useCallback(async (snapshot: object) => {
@@ -544,7 +542,11 @@ export default function CanvasPage() {
       {/* Canvas fills the screen below toolbar */}
       <div className="pt-14 h-full">
         <CanvasWrapper
+          key={`${activeCanvasEngine}:${session?.id ?? 'new'}`}
           ref={canvasRef}
+          engine={activeCanvasEngine}
+          sessionId={session?.id}
+          initialSnapshot={session?.canvasState ?? null}
           onCanvasChange={handleCanvasChange}
         />
       </div>
@@ -578,8 +580,7 @@ export default function CanvasPage() {
         onResume={(s) => {
           setSession(s)
           setHasChanges(false)
-          // Reload the page to restore the tldraw snapshot
-          window.location.reload()
+          setSessionPickerOpen(false)
         }}
       />
       <SettingsPanel

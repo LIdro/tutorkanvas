@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────
 // TutorKanvas — Canvas Actions Engine
 // Parses AI JSON responses into typed canvas actions
-// and provides helpers to execute them via tldraw.
+// and provides helpers to execute them via the active canvas engine.
 // ─────────────────────────────────────────────
 
-import type { Editor } from 'tldraw'
+import type { CanvasEngine } from '@/lib/canvas-engine/types'
 import type { CanvasAction, AICanvasResponse, GameConfig } from '@/types'
 
 let canvasShapeCounter = 0
@@ -12,28 +12,6 @@ let canvasShapeCounter = 0
 function nextCanvasShapeId(prefix: string): string {
   canvasShapeCounter += 1
   return `shape:canvas-${prefix}-${canvasShapeCounter}`
-}
-
-// ── TLRichText helper ─────────────────────────
-
-/**
- * Build a minimal ProseMirror doc (TLRichText) from a plain string.
- * Uses the same structure as tldraw's built-in toRichText() export.
- * We keep this local to avoid pulling the full tldraw bundle into
- * server-side code paths (API routes, etc.).
- */
-function toRichText(plain: string) {
-  // Split on newlines to produce separate paragraphs
-  const lines = plain.split('\n')
-  return {
-    type: 'doc',
-    content: lines.map((line) => ({
-      type: 'paragraph',
-      content: line
-        ? [{ type: 'text', text: line }]
-        : [],
-    })),
-  }
 }
 
 // ── Font-size mapping ─────────────────────────
@@ -45,42 +23,28 @@ const FONT_SIZE_MAP = {
   xl: 'xl',
 } as const
 
-type TldrawSize  = 's' | 'm' | 'l' | 'xl'
-type TldrawColor = 'black' | 'grey' | 'light-violet' | 'violet' | 'blue' |
-                   'light-blue' | 'yellow' | 'orange' | 'green' | 'light-green' |
-                   'light-red' | 'red' | 'white'
-type TldrawGeo   = 'rectangle' | 'ellipse' | 'triangle' | 'diamond' |
-                   'arrow-left' | 'arrow-right' | 'arrow-up' | 'arrow-down' |
-                   'oval' | 'cloud' | 'heart' | 'hexagon' | 'octagon'
-type TldrawFill  = 'none' | 'semi' | 'solid' | 'pattern'
-type TldrawDash  = 'draw' | 'solid' | 'dashed' | 'dotted'
-type TldrawAlign = 'start' | 'middle' | 'end'
-type TldrawFont  = 'draw' | 'sans' | 'serif' | 'mono'
-
 // ── Shape-type mapping ────────────────────────
 
-const GEO_TYPE_MAP: Record<string, TldrawGeo> = {
+const GEO_TYPE_MAP: Record<string, 'rectangle' | 'ellipse'> = {
   rectangle: 'rectangle',
   ellipse:   'ellipse',
   circle:    'ellipse',
-  triangle:  'triangle',
-  diamond:   'diamond',
   line:      'rectangle',     // closest native geo
   numberLine: 'rectangle',
 }
 
 // ── Color helper ──────────────────────────────
 
-const TLDRAW_COLORS: TldrawColor[] = [
+const CANVAS_COLORS = [
   'black', 'grey', 'light-violet', 'violet', 'blue',
   'light-blue', 'yellow', 'orange', 'green', 'light-green',
   'light-red', 'red', 'white',
-]
+] as const
 
-function toTldrawColor(color?: string): TldrawColor {
+function toCanvasColor(color?: string): string {
   if (!color) return 'black'
   const lower = color.toLowerCase()
-  if (TLDRAW_COLORS.includes(lower as TldrawColor)) return lower as TldrawColor
+  if (CANVAS_COLORS.includes(lower as typeof CANVAS_COLORS[number])) return lower
   if (lower.includes('purple') || lower.includes('pink') && lower.includes('violet')) return 'violet'
   if (lower.includes('pink'))   return 'light-red'
   if (lower.includes('gray'))   return 'grey'
@@ -92,12 +56,12 @@ function toTldrawColor(color?: string): TldrawColor {
 // ── executeCanvasActions ──────────────────────
 
 /**
- * Execute a list of CanvasAction objects against the live tldraw Editor.
+ * Execute a list of CanvasAction objects against the active canvas engine.
  *
  * Action types handled:
- *  - add_text    → tldraw text shape (uses richText)
- *  - add_shape   → geo shape (rectangle, ellipse, …) or arrow
- *  - add_card    → note shape (sticky note, uses richText)
+ *  - add_text    → text shape
+ *  - add_shape   → shape or arrow
+ *  - add_card    → chalk-style explanatory text
  *  - add_game    → silently ignored (rendered in AIResponseCard overlay)
  *  - speak       → silently ignored (handled by voice hook)
  *  - suggest_game→ silently ignored
@@ -105,192 +69,205 @@ function toTldrawColor(color?: string): TldrawColor {
  * Legacy action types (write_text / draw_shape / highlight / clear) are
  * forwarded to their modern equivalents for backwards compatibility.
  */
-export function executeCanvasActions(editor: Editor, actions: CanvasAction[]): string[] {
-  if (!editor || !actions.length) return []
+export function executeCanvasActions(engine: CanvasEngine, actions: CanvasAction[]): string[] {
+  if (!engine || !actions.length) return []
 
   const createdShapeIds: string[] = []
 
-  editor.run(() => {
-    for (const action of actions) {
-      const type = (action as { type: string }).type
+  for (const action of actions) {
+    const type = (action as { type: string }).type
 
-      // ── Legacy: clear ─────────────────────────────────────────────
-      if (type === 'clear') {
-        const ids = [...editor.getCurrentPageShapeIds()]
-        if (ids.length) editor.deleteShapes(ids)
-        continue
+    // ── Legacy: clear ─────────────────────────────────────────────
+    if (type === 'clear') {
+      const ids = engine.listElementIds()
+      if (ids.length) engine.deleteByIds(ids)
+      continue
+    }
+
+    switch (action.type) {
+      // ── add_text ───────────────────────────────────────────────
+      case 'add_text': {
+        const id = engine.addText({
+          x: action.x,
+          y: action.y,
+          text: action.content,
+          size: FONT_SIZE_MAP[action.style?.fontSize ?? 'md'] ?? 'm',
+          color: toCanvasColor(action.style?.color),
+          width: 300,
+          autoSize: true,
+          metadata: {
+            transient: true,
+            programmaticSource: 'ai',
+            runtimeRole: 'canvas-action-text',
+          },
+        })
+        createdShapeIds.push(id)
+        break
       }
 
-      switch (action.type) {
-        // ── add_text ───────────────────────────────────────────────
-        case 'add_text': {
-          const id = nextCanvasShapeId('text')
-          const size  = (FONT_SIZE_MAP[action.style?.fontSize ?? 'md'] ?? 'm') as TldrawSize
-          const color = toTldrawColor(action.style?.color)
-          editor.createShape({
-            id,
-            type: 'text',
+      // ── add_shape ──────────────────────────────────────────────
+      case 'add_shape': {
+        const w = action.props.width ?? 200
+        const h = action.props.height ?? 120
+        const color = toCanvasColor(action.props.color)
+
+        if (action.shape === 'arrow') {
+          const id = engine.addArrow({
             x: action.x,
             y: action.y,
-            props: {
-              richText: toRichText(action.content) as any,
-              size,
-              color,
-              font:     'draw' as TldrawFont,
-              textAlign: 'start' as TldrawAlign,
-              autoSize: true,
-              w: 300,
-              scale: 1,
+            endX: action.x + w,
+            endY: action.y,
+            color,
+            metadata: {
+              transient: true,
+              programmaticSource: 'ai',
+              runtimeRole: 'canvas-action-arrow',
             },
-          } as any)
+          })
           createdShapeIds.push(id)
-          break
-        }
-
-        // ── add_shape ──────────────────────────────────────────────
-        case 'add_shape': {
-          const w     = action.props.width  ?? 200
-          const h     = action.props.height ?? 120
-          const color = toTldrawColor(action.props.color)
-          const label = action.props.label ?? ''
-
-          if (action.shape === 'arrow') {
-            const id = nextCanvasShapeId('arrow')
-            editor.createShape({
-              id,
-              type: 'arrow',
-              x: action.x,
-              y: action.y,
-              props: {
-                color,
-                start: { x: 0, y: 0 },
-                end:   { x: w, y: 0 },
-              } as any,
-            } as any)
-            createdShapeIds.push(id)
-          } else {
-            const id = nextCanvasShapeId('shape')
-            const geo = GEO_TYPE_MAP[action.shape] ?? 'rectangle'
-            editor.createShape({
-              id,
-              type: 'geo',
-              x: action.x,
-              y: action.y,
-              props: {
-                geo,
-                w,
-                h,
-                color,
-                fill:   'none'   as TldrawFill,
-                dash:   'draw'   as TldrawDash,
-                size:   'm'      as TldrawSize,
-                richText: label ? toRichText(label) as any : toRichText('') as any,
-                font:   'draw'   as TldrawFont,
-                align:  'middle' as TldrawAlign,
-              } as any,
-            } as any)
-            createdShapeIds.push(id)
-          }
-          break
-        }
-
-        // ── add_card rendered as chalk text on the board ──────────
-        case 'add_card': {
-          const title = action.content.title ? `${action.content.title}\n\n` : ''
-          const text  = title + (action.content.body ?? '')
-          const id = nextCanvasShapeId('card-text')
-          const color = action.content.type === 'error' ? 'light-red' : 'white'
-          editor.createShape({
-            id,
-            type: 'text',
+        } else if (GEO_TYPE_MAP[action.shape] === 'ellipse') {
+          const id = engine.addEllipse({
             x: action.x,
             y: action.y,
-            props: {
-              richText: toRichText(text) as any,
-              color: color as TldrawColor,
-              size:   'l'      as TldrawSize,
-              font:   'draw'   as TldrawFont,
-              textAlign: 'start' as TldrawAlign,
-              autoSize: true,
-              w: 560,
-              scale: 1,
-            } as any,
-          } as any)
+            width: w,
+            height: h,
+            color,
+            fill: 'none',
+            metadata: {
+              transient: true,
+              programmaticSource: 'ai',
+              runtimeRole: 'canvas-action-shape',
+            },
+          })
           createdShapeIds.push(id)
-          break
-        }
-
-        // ── Silently skipped (rendered in overlay) ─────────────────
-        case 'add_game':
-        case 'speak':
-        case 'suggest_game':
-          break
-
-        // ── Legacy action aliases ──────────────────────────────────
-        default: {
-          if (type === 'write_text') {
-            const l = action as unknown as { x: number; y: number; text: string }
-            const id = nextCanvasShapeId('legacy-text')
-            editor.createShape({
-              id,
-              type: 'text',
-              x: l.x ?? 100,
-              y: l.y ?? 100,
-              props: {
-                richText: toRichText(l.text ?? '') as any,
-                size:    'm'     as TldrawSize,
-                color:   'black' as TldrawColor,
-                font:    'draw'  as TldrawFont,
-                textAlign: 'start' as TldrawAlign,
-                autoSize: true,
-                w: 300,
-                scale: 1,
+          if (action.props.label) {
+            createdShapeIds.push(engine.addText({
+              x: action.x + 12,
+              y: action.y + 12,
+              text: action.props.label,
+              color,
+              width: Math.max(80, w - 24),
+              align: 'middle',
+              metadata: {
+                transient: true,
+                programmaticSource: 'ai',
+                runtimeRole: 'canvas-action-shape-label',
               },
-            } as any)
-            createdShapeIds.push(id)
-          } else if (type === 'draw_shape') {
-            const l = action as unknown as { x: number; y: number; shape?: string; width?: number; height?: number }
-            const id = nextCanvasShapeId('legacy-shape')
-            editor.createShape({
-              id,
-              type: 'geo',
-              x: l.x ?? 100,
-              y: l.y ?? 100,
-              props: {
-                geo:   GEO_TYPE_MAP[l.shape ?? 'rectangle'] ?? 'rectangle',
-                w:     l.width  ?? 200,
-                h:     l.height ?? 120,
-                color: 'black' as TldrawColor,
-                fill:  'none'  as TldrawFill,
-                dash:  'draw'  as TldrawDash,
-                size:  'm'     as TldrawSize,
-              } as any,
-            } as any)
-            createdShapeIds.push(id)
-          } else if (type === 'highlight') {
-            const l = action as unknown as { x: number; y: number; width?: number; height?: number; color?: string }
-            const id = nextCanvasShapeId('legacy-highlight')
-            editor.createShape({
-              id,
-              type: 'geo',
-              x: l.x ?? 100,
-              y: l.y ?? 100,
-              props: {
-                geo:   'rectangle' as TldrawGeo,
-                w:     l.width  ?? 200,
-                h:     l.height ?? 60,
-                color: toTldrawColor(l.color ?? 'yellow'),
-                fill:  'semi'  as TldrawFill,
-                dash:  'draw'  as TldrawDash,
-                size:  'm'     as TldrawSize,
-              } as any,
-            } as any)
-            createdShapeIds.push(id)
+            }))
           }
+        } else {
+          const id = engine.addRectangle({
+            x: action.x,
+            y: action.y,
+            width: w,
+            height: h,
+            color,
+            fill: 'none',
+            metadata: {
+              transient: true,
+              programmaticSource: 'ai',
+              runtimeRole: 'canvas-action-shape',
+            },
+          })
+          createdShapeIds.push(id)
+          if (action.props.label) {
+            createdShapeIds.push(engine.addText({
+              x: action.x + 12,
+              y: action.y + 12,
+              text: action.props.label,
+              color,
+              width: Math.max(80, w - 24),
+              align: 'middle',
+              metadata: {
+                transient: true,
+                programmaticSource: 'ai',
+                runtimeRole: 'canvas-action-shape-label',
+              },
+            }))
+          }
+        }
+        break
+      }
+
+      // ── add_card rendered as chalk text on the board ──────────
+      case 'add_card': {
+        const title = action.content.title ? `${action.content.title}\n\n` : ''
+        const text = title + (action.content.body ?? '')
+        const color = action.content.type === 'error' ? 'light-red' : 'white'
+        const id = engine.addText({
+          x: action.x,
+          y: action.y,
+          text,
+          color,
+          size: 'l',
+          width: 560,
+          autoSize: true,
+          metadata: {
+            transient: true,
+            programmaticSource: 'ai',
+            runtimeRole: 'canvas-action-card',
+          },
+        })
+        createdShapeIds.push(id)
+        break
+      }
+
+      // ── Silently skipped (rendered in overlay) ─────────────────
+      case 'add_game':
+      case 'speak':
+      case 'suggest_game':
+        break
+
+      // ── Legacy action aliases ──────────────────────────────────
+      default: {
+        if (type === 'write_text') {
+          const l = action as unknown as { x: number; y: number; text: string }
+          createdShapeIds.push(engine.addText({
+            x: l.x ?? 100,
+            y: l.y ?? 100,
+            text: l.text ?? '',
+            color: 'black',
+            width: 300,
+            metadata: {
+              transient: true,
+              programmaticSource: 'ai',
+              runtimeRole: 'legacy-text',
+            },
+          }))
+        } else if (type === 'draw_shape') {
+          const l = action as unknown as { x: number; y: number; shape?: string; width?: number; height?: number }
+          createdShapeIds.push(engine.addRectangle({
+            x: l.x ?? 100,
+            y: l.y ?? 100,
+            width: l.width ?? 200,
+            height: l.height ?? 120,
+            color: 'black',
+            fill: 'none',
+            metadata: {
+              transient: true,
+              programmaticSource: 'ai',
+              runtimeRole: 'legacy-shape',
+            },
+          }))
+        } else if (type === 'highlight') {
+          const l = action as unknown as { x: number; y: number; width?: number; height?: number; color?: string }
+          createdShapeIds.push(engine.addRectangle({
+            x: l.x ?? 100,
+            y: l.y ?? 100,
+            width: l.width ?? 200,
+            height: l.height ?? 60,
+            color: toCanvasColor(l.color ?? 'yellow'),
+            fill: 'semi',
+            metadata: {
+              transient: true,
+              programmaticSource: 'ai',
+              runtimeRole: 'legacy-highlight',
+            },
+          }))
         }
       }
     }
-  })
+  }
 
   return createdShapeIds
 }

@@ -13,6 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.81.0",
     "@clerk/nextjs": "^7.0.8",
+    "@excalidraw/excalidraw": "^0.18.0",
     "@google/generative-ai": "^0.24.1",
     "clsx": "^2.1.1",
     "idb": "^8.0.3",
