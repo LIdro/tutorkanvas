@@ -10,7 +10,10 @@ import 'server-only'
 import { DEV_BYPASS_USER_ID } from './dev-auth'
 
 export function isDevAuthBypassServer(): boolean {
-  return process.env.NODE_ENV !== 'production' && process.env.DEV_AUTH_BYPASS === 'true'
+  return (
+    (process.env.NODE_ENV !== 'production' && process.env.DEV_AUTH_BYPASS === 'true') ||
+    !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+  )
 }
 
 /**

@@ -8,8 +8,9 @@ import "./globals.css";
 // client bundle.  When true, ClerkProvider is omitted entirely so that no
 // Clerk network requests are made during local development.
 const DEV_BYPASS =
-  process.env.NODE_ENV !== 'production' &&
-  process.env.DEV_AUTH_BYPASS === 'true'
+  ((process.env.NODE_ENV !== 'production' &&
+    process.env.DEV_AUTH_BYPASS === 'true') ||
+    !process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
 
 const ENABLE_SW = process.env.NODE_ENV === 'production'
 

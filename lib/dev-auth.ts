@@ -7,8 +7,13 @@
 
 export const DEV_BYPASS_USER_ID = 'dev-local-user'
 
+function hasClientClerkConfig(): boolean {
+  return typeof process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY === 'string' &&
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.trim().length > 0
+}
+
 export function isDevAuthBypassClient(): boolean {
-  return process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === 'true'
+  return process.env.NEXT_PUBLIC_DEV_AUTH_BYPASS === 'true' || !hasClientClerkConfig()
 }
 
 export function getEffectiveUserId(userId: string | null | undefined, bypassEnabled: boolean): string | null {
