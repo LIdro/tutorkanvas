@@ -1,5 +1,11 @@
 import type { NextConfig } from "next";
 
+const scriptSrc = [
+  "script-src 'self' 'unsafe-inline'",
+  process.env.NODE_ENV === 'development' ? "'unsafe-eval'" : '',
+  "https://*.clerk.accounts.dev https://*.accounts.dev https://*.clerk.dev https://*.clerk.com",
+].filter(Boolean).join(' ')
+
 const nextConfig: NextConfig = {
   // ── Security headers ──────────────────────────────────────────────────
   async headers() {
@@ -19,7 +25,7 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' https://*.clerk.accounts.dev https://*.accounts.dev https://*.clerk.dev https://*.clerk.com",
+              scriptSrc,
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' blob: data: https://img.clerk.com",

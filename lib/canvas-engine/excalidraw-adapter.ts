@@ -38,8 +38,44 @@ type ExcalidrawElementLike = {
   isDeleted?: boolean
 }
 
+const COLOR_MAP: Record<string, string> = {
+  black: '#111827',
+  grey: '#9ca3af',
+  gray: '#9ca3af',
+  white: '#f8fafc',
+  yellow: '#facc15',
+  orange: '#fb923c',
+  red: '#ef4444',
+  'light-red': '#fca5a5',
+  blue: '#60a5fa',
+  'light-blue': '#93c5fd',
+  green: '#4ade80',
+  'light-green': '#86efac',
+  violet: '#a78bfa',
+  'light-violet': '#c4b5fd',
+}
+
+const FONT_SIZE_MAP: Record<NonNullable<CanvasTextInput['size']>, number> = {
+  s: 18,
+  m: 24,
+  l: 32,
+  xl: 40,
+}
+
 function toCaptureUpdate(action: 'IMMEDIATELY' | 'EVENTUALLY' | 'NEVER' = 'IMMEDIATELY') {
   return action
+}
+
+function normalizeColor(color?: string, fallback: string = '#f8fafc') {
+  if (!color) return fallback
+  const normalized = color.trim().toLowerCase()
+  return COLOR_MAP[normalized] ?? color
+}
+
+function normalizeFillStyle(fill: 'none' | 'semi' | 'solid' | undefined) {
+  if (fill === 'solid') return 'solid'
+  if (fill === 'semi') return 'hachure'
+  return 'solid'
 }
 
 function getElementBounds(element: ExcalidrawElementLike): CanvasElementBounds {
@@ -147,7 +183,13 @@ export class ExcalidrawCanvasEngine implements CanvasEngine {
         x: input.x,
         y: input.y,
         text: input.text,
-        strokeColor: input.color ?? '#ffffff',
+        strokeColor: normalizeColor(input.color),
+        backgroundColor: 'transparent',
+        fontSize: FONT_SIZE_MAP[input.size ?? 'm'],
+        fontFamily: 1,
+        textAlign: input.align === 'middle' ? 'center' : input.align === 'end' ? 'right' : 'left',
+        verticalAlign: 'top',
+        lineHeight: 1.25,
         width: input.width,
         customData: input.metadata,
       } as any,
@@ -167,8 +209,12 @@ export class ExcalidrawCanvasEngine implements CanvasEngine {
         y: input.y,
         width: input.width,
         height: input.height,
-        strokeColor: input.color ?? '#ffffff',
-        backgroundColor: input.fill === 'none' ? 'transparent' : input.color ?? '#ffffff',
+        strokeColor: normalizeColor(input.color),
+        backgroundColor: input.fill === 'none' ? 'transparent' : normalizeColor(input.color, '#f8fafc'),
+        fillStyle: normalizeFillStyle(input.fill),
+        opacity: input.fill === 'semi' ? 28 : 100,
+        roughness: 0,
+        strokeWidth: 2,
         customData: input.metadata,
       } as any,
     ])
@@ -187,8 +233,12 @@ export class ExcalidrawCanvasEngine implements CanvasEngine {
         y: input.y,
         width: input.width,
         height: input.height,
-        strokeColor: input.color ?? '#ffffff',
-        backgroundColor: input.fill === 'none' ? 'transparent' : input.color ?? '#ffffff',
+        strokeColor: normalizeColor(input.color),
+        backgroundColor: input.fill === 'none' ? 'transparent' : normalizeColor(input.color, '#f8fafc'),
+        fillStyle: normalizeFillStyle(input.fill),
+        opacity: input.fill === 'semi' ? 28 : 100,
+        roughness: 0,
+        strokeWidth: 2,
         customData: input.metadata,
       } as any,
     ])
@@ -200,6 +250,8 @@ export class ExcalidrawCanvasEngine implements CanvasEngine {
   }
 
   addLine(input: CanvasLineInput) {
+    const deltaX = Math.abs(input.width) < 0.01 ? 0.75 : input.width
+    const deltaY = Math.abs(input.height) < 0.01 ? 0.75 : input.height
     const [element] = this.utils.convertToExcalidrawElements([
       {
         type: 'line',
@@ -207,9 +259,11 @@ export class ExcalidrawCanvasEngine implements CanvasEngine {
         y: input.y,
         points: [
           [0, 0],
-          [input.width, input.height],
+          [deltaX, deltaY],
         ],
-        strokeColor: input.color ?? '#ffffff',
+        strokeColor: normalizeColor(input.color),
+        roughness: 0,
+        strokeWidth: 2,
         customData: input.metadata,
       } as any,
     ])
@@ -230,7 +284,9 @@ export class ExcalidrawCanvasEngine implements CanvasEngine {
           [0, 0],
           [input.endX - input.x, input.endY - input.y],
         ],
-        strokeColor: input.color ?? '#ff0000',
+        strokeColor: normalizeColor(input.color, '#ef4444'),
+        roughness: 0,
+        strokeWidth: 2,
         customData: input.metadata,
       } as any,
     ])

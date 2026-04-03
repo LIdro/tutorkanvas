@@ -15,6 +15,9 @@ const Excalidraw = dynamic(
   { ssr: false }
 )
 
+const DEFAULT_CHALK_STROKE = '#f8fafc'
+const DEFAULT_CANVAS_BACKGROUND = '#12160f'
+
 interface CanvasWrapperProps {
   sessionId?: string
   initialSnapshot?: unknown
@@ -136,9 +139,24 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
       <div className="absolute inset-0">
         <Excalidraw
           theme={prefersDark ? 'dark' : 'light'}
-          initialData={(normalizedSnapshot?.engine === 'excalidraw'
-            ? (normalizedSnapshot.scene as { elements?: unknown[]; appState?: object })
-            : undefined) as any}
+          initialData={(() => {
+            const restored = normalizedSnapshot?.engine === 'excalidraw'
+              ? (normalizedSnapshot.scene as { elements?: unknown[]; appState?: Record<string, unknown> })
+              : undefined
+
+            return {
+              elements: restored?.elements ?? [],
+              appState: {
+                ...(restored?.appState ?? {}),
+                currentItemStrokeColor: DEFAULT_CHALK_STROKE,
+                currentItemBackgroundColor: 'transparent',
+                viewBackgroundColor: DEFAULT_CANVAS_BACKGROUND,
+                currentItemFillStyle: 'solid',
+                currentItemRoughness: 0,
+                currentItemStrokeWidth: 2,
+              },
+            }
+          })() as any}
           excalidrawAPI={(api) => {
             if (!api) return
             void import('@excalidraw/excalidraw')
@@ -147,6 +165,22 @@ const CanvasWrapper = forwardRef<CanvasWrapperRef, CanvasWrapperProps>(
                   convertToExcalidrawElements: mod.convertToExcalidrawElements as any,
                   exportToBlob: mod.exportToBlob as any,
                 }))
+                api.updateScene({
+                  appState: {
+                    ...api.getAppState(),
+                    currentItemStrokeColor: DEFAULT_CHALK_STROKE,
+                    currentItemBackgroundColor: 'transparent',
+                    viewBackgroundColor: DEFAULT_CANVAS_BACKGROUND,
+                    currentItemFillStyle: 'solid',
+                    currentItemRoughness: 0,
+                    currentItemStrokeWidth: 2,
+                  },
+                  captureUpdate: 'NEVER',
+                })
+                api.setActiveTool({
+                  type: 'freedraw',
+                  locked: false,
+                })
               })
               .catch((error) => {
                 console.error('[canvas] Failed to load Excalidraw runtime', error)
