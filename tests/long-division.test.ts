@@ -56,6 +56,30 @@ describe('long division planner', () => {
     expect(script?.steps.some((step) => step.id.includes('share_fast'))).toBe(true)
   })
 
+  it('uses the concrete sharing path for regular profiles on 29 divided by 3', () => {
+    const regularLearner: LearnerProfile = {
+      id: 'profile-regular',
+      userId: 'user-1',
+      name: 'Sam',
+      age: 9,
+      avatar: '🧒',
+      grade: '4',
+      topicsAttempted: {},
+      topicStars: {},
+      commonErrors: [],
+      preferredStyle: 'auto',
+      sessionCount: 0,
+      lastActive: new Date().toISOString(),
+      totalStars: 0,
+      aiNotes: [],
+    }
+
+    const script = buildLongDivisionLessonScript({ dividend: 29, divisor: 3 }, regularLearner)
+
+    expect(script?.scene.nodes['step.0.group.0.circle']).toBeDefined()
+    expect(script?.steps.some((step) => step.id.includes('share_fast'))).toBe(true)
+  })
+
   it('uses the concrete sharing path for younger learners on larger simple division steps', () => {
     const youngLearner: LearnerProfile = {
       id: 'profile-young',
@@ -109,7 +133,7 @@ describe('long division planner', () => {
 
     expect(script?.steps.some((step) => step.id.includes('check_first_digit'))).toBe(true)
     expect(script?.scene.nodes['summary.answer']).toBeDefined()
-    expect(script?.steps.find((step) => step.id === 'summary')?.actions.some((action) => action.type === 'highlight_symbol')).toBe(true)
+    expect(script?.steps.find((step) => step.id === 'summary')?.actions.some((action) => action.type === 'reveal_result')).toBe(true)
   })
 })
 

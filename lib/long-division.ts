@@ -308,11 +308,11 @@ function getTeachingProfile(profile: LearnerProfile | null): LongDivisionTeachin
   }
 
   return {
-    shouldPreferConcreteDemo: false,
+    shouldPreferConcreteDemo: true,
     forceConcreteDemo: false,
-    maxConcreteDivisor: MAX_CONCRETE_DIVISOR,
-    maxConcreteQuotient: MAX_CONCRETE_QUOTIENT,
-    maxConcreteShareCount: MAX_CONCRETE_SHARE_COUNT,
+    maxConcreteDivisor: 9,
+    maxConcreteQuotient: 10,
+    maxConcreteShareCount: 60,
   }
 }
 
@@ -642,7 +642,6 @@ function buildLessonSteps(problem: LongDivisionProblem, steps: LongDivisionStepD
       : `So ${problem.dividend} divided by ${problem.divisor} equals ${Math.floor(problem.dividend / problem.divisor)} remainder ${remainder}.`,
     actions: [
       { type: 'reveal_result', target: 'summary.answer', text: getSummaryAnswerText(problem) },
-      { type: 'highlight_symbol', target: 'summary.answer', style: 'glow', color: 'yellow' },
     ],
     waitFor: 'speech_end',
   })
